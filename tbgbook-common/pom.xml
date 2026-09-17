@@ -158,23 +158,23 @@
             <artifactId>jakarta.servlet-api</artifactId>
         </dependency>
 
-        <!-- ruoyi-springboot3 / swagger knife4j 配置 -->
+        <!-- ruoyi-springboot3 / swagger knife4j 配置（Jakarta 专用 starter，版本由根 pom 管理） -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-spring-boot-starter</artifactId>
-            <version>3.0.3</version>
+            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
         </dependency>
 
         <!--Lombok-->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
 
         <!--MyBatisPlus-->
         <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
             <exclusions>
                 <exclusion>
                     <groupId>org.jetbrains.kotlin</groupId>
@@ -193,10 +193,6 @@
                     <artifactId>kotlin-stdlib-jdk8</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-annotation</artifactId>
         </dependency>
 
         <!--hutool工具包-->

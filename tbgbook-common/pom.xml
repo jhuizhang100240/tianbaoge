@@ -171,10 +171,10 @@
             <artifactId>jakarta.servlet-api</artifactId>
         </dependency>
 
-        <!-- ruoyi-springboot3 / swagger knife4j 配置（Jakarta 专用 starter，版本由根 pom 管理） -->
+        <!-- ruoyi-springboot3 / swagger knife4j 增强 UI（仅静态 UI，版本由根 pom 管理） -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+            <artifactId>knife4j-openapi3-ui</artifactId>
         </dependency>
 
         <!--Lombok-->

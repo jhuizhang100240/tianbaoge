@@ -179,10 +179,10 @@
                 <version>${mybatis-plus.version}</version>
             </dependency>
 
-            <!-- Knife4j 增强 UI（Jakarta / OpenAPI3 专用 starter） -->
+            <!-- Knife4j 增强 UI（仅静态 UI，不含 starter 自动配置，规避 springdoc 2.9.x 签名不兼容） -->
             <dependency>
                 <groupId>com.github.xiaoymin</groupId>
-                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+                <artifactId>knife4j-openapi3-ui</artifactId>
                 <version>${knife4j.version}</version>
             </dependency>
 

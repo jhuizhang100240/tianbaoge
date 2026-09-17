@@ -172,6 +172,20 @@
                 <version>${tbgbook.version}</version>
             </dependency>
 
+            <!-- 业务域模块-->
+            <dependency>
+                <groupId>com.tbgbook</groupId>
+                <artifactId>tbgbook-bookstore-platform</artifactId>
+                <version>${tbgbook.version}</version>
+            </dependency>
+
+            <!-- OSS 模块-->
+            <dependency>
+                <groupId>com.tbgbook</groupId>
+                <artifactId>tbgbook-oss</artifactId>
+                <version>${tbgbook.version}</version>
+            </dependency>
+
             <!-- MyBatis-Plus 增强CRUD（Spring Boot 3 专用 starter） -->
             <dependency>
                 <groupId>com.baomidou</groupId>
@@ -289,6 +303,7 @@
         <module>tbgbook-generator</module>
         <module>tbgbook-common</module>
         <module>tbgbook-oss</module>
+        <module>tbgbook-bookstore-platform</module>
     </modules>
     <packaging>pom</packaging>
 

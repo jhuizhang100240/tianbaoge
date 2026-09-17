@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>tbgbook</artifactId>
+        <groupId>com.tbgbook</groupId>
+        <version>3.9.2</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>tbgbook-bookstore-platform</artifactId>
+
+    <description>
+        业务域：图书 / 库存 / 销售 / 会员 / 借阅 / 二手书 / AI / 消息 / 分析
+    </description>
+
+    <dependencies>
+
+        <!-- 框架核心：Web / AOP / Security / Druid -->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-framework</artifactId>
+        </dependency>
+
+        <!-- 阿里云 OSS 文件上传 -->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-oss</artifactId>
+        </dependency>
+
+        <!--Lombok-->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+    </dependencies>
+
+</project>

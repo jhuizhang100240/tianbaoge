@@ -47,7 +47,7 @@ public class ${subClassName} extends BaseEntity
 #end
 #end
 #if($subTable.pkColumn && $column.columnName == $subTable.pkColumn.columnName)
-    @TableId(value = "${column.columnName}", type = IdType.AUTO)
+    @TableId(value = "${column.columnName}", type = #if($subTable.pkColumn.increment)IdType.AUTO#else IdType.INPUT#end)
 #elseif($column.javaField == 'delFlag')
     @TableLogic(value = "0", delval = "2")
 #elseif($column.javaField == 'version')

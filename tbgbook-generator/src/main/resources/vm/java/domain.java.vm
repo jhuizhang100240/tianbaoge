@@ -56,7 +56,7 @@ public class ${ClassName} extends ${Entity}
 #end
 #end
 #if($column.columnName == $pkColumn.columnName)
-    @TableId(value = "${column.columnName}", type = IdType.AUTO)
+    @TableId(value = "${column.columnName}", type = #if($pkColumn.increment)IdType.AUTO#else IdType.INPUT#end)
 #elseif($column.javaField == 'delFlag')
     @TableLogic(value = "0", delval = "2")
 #elseif($column.javaField == 'version')

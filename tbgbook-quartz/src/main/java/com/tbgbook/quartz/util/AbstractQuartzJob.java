@@ -1,6 +1,7 @@
 package com.tbgbook.quartz.util;
 
-import java.util.Date;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.slf4j.Logger;
@@ -27,7 +28,7 @@ public abstract class AbstractQuartzJob implements Job
     /**
      * 线程本地变量
      */
-    private static ThreadLocal<Date> threadLocal = new ThreadLocal<>();
+    private static ThreadLocal<LocalDateTime> threadLocal = new ThreadLocal<>();
 
     @Override
     public void execute(JobExecutionContext context)
@@ -58,7 +59,7 @@ public abstract class AbstractQuartzJob implements Job
      */
     protected void before(JobExecutionContext context, SysJob sysJob)
     {
-        threadLocal.set(new Date());
+        threadLocal.set(LocalDateTime.now());
     }
 
     /**
@@ -69,7 +70,7 @@ public abstract class AbstractQuartzJob implements Job
      */
     protected void after(JobExecutionContext context, SysJob sysJob, Exception e)
     {
-        Date startTime = threadLocal.get();
+        LocalDateTime startTime = threadLocal.get();
         threadLocal.remove();
 
         final SysJobLog sysJobLog = new SysJobLog();
@@ -77,8 +78,8 @@ public abstract class AbstractQuartzJob implements Job
         sysJobLog.setJobGroup(sysJob.getJobGroup());
         sysJobLog.setInvokeTarget(sysJob.getInvokeTarget());
         sysJobLog.setStartTime(startTime);
-        sysJobLog.setEndTime(new Date());
-        long runMs = sysJobLog.getEndTime().getTime() - sysJobLog.getStartTime().getTime();
+        sysJobLog.setEndTime(LocalDateTime.now());
+        long runMs = Duration.between(sysJobLog.getStartTime(), sysJobLog.getEndTime()).toMillis();
         sysJobLog.setJobMessage(sysJobLog.getJobName() + " 总共耗时：" + runMs + "毫秒");
         if (e != null)
         {

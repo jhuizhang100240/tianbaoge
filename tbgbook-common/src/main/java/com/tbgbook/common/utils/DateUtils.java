@@ -8,6 +8,10 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.Duration;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import org.apache.commons.lang3.time.DateFormatUtils;
 
@@ -188,5 +192,172 @@ public class DateUtils extends org.apache.commons.lang3.time.DateUtils
         LocalDateTime localDateTime = LocalDateTime.of(temporalAccessor, LocalTime.of(0, 0, 0));
         ZonedDateTime zdt = localDateTime.atZone(ZoneId.systemDefault());
         return Date.from(zdt.toInstant());
+    }
+
+    // ==================== LocalDateTime / LocalDate（2026-09-22 新增） ====================
+    // 项目自 2026-09-22 起实体统一用 java.time 类型，以下为其配套工具。
+    // 上方 java.util.Date 的 API 全部保留 —— Quartz 的 CronExpression、POI、commons-lang3
+    // 仍只接受 java.util.Date，删掉会连带改坏平台侧与第三方交互的边界。
+
+    /**
+     * 获取当前 LocalDateTime
+     */
+    public static LocalDateTime getNowLocalDateTime()
+    {
+        return LocalDateTime.now();
+    }
+
+    /**
+     * 获取当前 LocalDate
+     */
+    public static LocalDate getNowLocalDate()
+    {
+        return LocalDate.now();
+    }
+
+    /**
+     * LocalDateTime 格式化。与 {@link #parseDateToStr(String, Date)} 同名重载，便于按目标类型直接调用
+     */
+    public static String parseDateToStr(final String format, final LocalDateTime dateTime)
+    {
+        if (dateTime == null)
+        {
+            return null;
+        }
+        return DateTimeFormatter.ofPattern(format).format(dateTime);
+    }
+
+    /**
+     * LocalDate 格式化
+     */
+    public static String parseDateToStr(final String format, final LocalDate date)
+    {
+        if (date == null)
+        {
+            return null;
+        }
+        return DateTimeFormatter.ofPattern(format).format(date);
+    }
+
+    /**
+     * 按指定格式把字符串解析为 LocalDateTime（**严格**模式：必须整串匹配，不做顺延）
+     *
+     * @param format 日期格式
+     * @param ts     待解析字符串
+     * @return 解析失败返回 null
+     */
+    public static LocalDateTime parseLocalDateTime(final String format, final String ts)
+    {
+        if (StringUtils.isEmpty(ts))
+        {
+            return null;
+        }
+        try
+        {
+            return LocalDateTime.parse(ts.trim(), DateTimeFormatter.ofPattern(format));
+        }
+        catch (DateTimeParseException e)
+        {
+            return null;
+        }
+    }
+
+    /**
+     * 日期型字符串转为 LocalDateTime，逐个尝试 {@link #parsePatterns} 中的格式
+     * <p>
+     * 纯日期串（如 {@code 2026-09-22}）按当日零点处理。
+     *
+     * @return 全部格式都不匹配时返回 null
+     */
+    public static LocalDateTime parseLocalDateTime(Object str)
+    {
+        String text = str == null ? null : str.toString().trim();
+        if (StringUtils.isEmpty(text))
+        {
+            return null;
+        }
+        // 先按纯日期处理（补零点），再试带时间的格式
+        for (String dateOnly : new String[] { YYYY_MM_DD, "yyyy/MM/dd", "yyyy.MM.dd" })
+        {
+            try
+            {
+                return LocalDate.parse(text, DateTimeFormatter.ofPattern(dateOnly)).atStartOfDay();
+            }
+            catch (DateTimeParseException ignored)
+            {
+                // 继续试下一种
+            }
+        }
+        for (String pattern : parsePatterns)
+        {
+            try
+            {
+                return LocalDateTime.parse(text, DateTimeFormatter.ofPattern(pattern));
+            }
+            catch (DateTimeParseException ignored)
+            {
+                // 继续试下一种
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 日期型字符串转为 LocalDate，逐个尝试格式
+     *
+     * @return 全部格式都不匹配时返回 null
+     */
+    public static LocalDate parseLocalDate(Object str)
+    {
+        LocalDateTime dateTime = parseLocalDateTime(str);
+        return dateTime == null ? null : dateTime.toLocalDate();
+    }
+
+    /**
+     * Date ==> LocalDateTime（按 JVM 默认时区）
+     */
+    public static LocalDateTime toLocalDateTime(Date date)
+    {
+        return date == null ? null : LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
+    }
+
+    /**
+     * Date ==> LocalDate（按 JVM 默认时区）
+     */
+    public static LocalDate toLocalDate(Date date)
+    {
+        LocalDateTime dateTime = toLocalDateTime(date);
+        return dateTime == null ? null : dateTime.toLocalDate();
+    }
+
+    /**
+     * 计算相差天数（按**日历天**，取绝对值）
+     * <p>
+     * 与 {@link #differentDaysByMillisecond(LocalDateTime, LocalDateTime)} 的区别：本方法数的是
+     * 跨了几个自然日，后者按「毫秒差整除 24 小时」算。业务上的「滞销 N 天」「账期 N 天」用本方法更自然。
+     */
+    public static int differentDays(LocalDateTime dateTime1, LocalDateTime dateTime2)
+    {
+        if (dateTime1 == null || dateTime2 == null)
+        {
+            return 0;
+        }
+        return Math.abs((int) ChronoUnit.DAYS.between(dateTime1.toLocalDate(), dateTime2.toLocalDate()));
+    }
+
+    /**
+     * 计算相差天数（按**毫秒差整除 24 小时**，取绝对值）
+     * <p>
+     * 与 {@link #differentDaysByMillisecond(Date, Date)} 同口径 —— 供 {@code Date} → {@code LocalDateTime}
+     * 的改造**保持原行为**使用（换口径会让阈值边界上的判定结果变化，属未声明的行为变更）。
+     */
+    public static int differentDaysByMillisecond(LocalDateTime dateTime1, LocalDateTime dateTime2)
+    {
+        if (dateTime1 == null || dateTime2 == null)
+        {
+            return 0;
+        }
+        long millis = Duration.between(dateTime1, dateTime2).toMillis();
+        return Math.abs((int) (millis / (1000 * 3600 * 24)));
     }
 }

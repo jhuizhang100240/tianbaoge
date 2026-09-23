@@ -3,12 +3,22 @@ package ${packageName}.domain;
 #foreach ($import in $importList)
 import ${import};
 #end
+#set($hasTableLogic = false)
+#set($hasVersion = false)
+#foreach ($column in $columns)
+#if($column.javaField == 'delFlag')#set($hasTableLogic = true)#end
+#if($column.javaField == 'version')#set($hasVersion = true)#end
+#end
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
+#if($hasTableLogic)
 import com.baomidou.mybatisplus.annotation.TableLogic;
+#end
 import com.baomidou.mybatisplus.annotation.TableName;
+#if($hasVersion)
 import com.baomidou.mybatisplus.annotation.Version;
+#end
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import com.tbgbook.common.annotation.Excel;
@@ -48,6 +58,12 @@ public class ${ClassName} extends ${Entity}
 #end
 #if($parentheseIndex != -1)
     @Excel(name = "${comment}", readConverterExp = "$column.readConverterExp()")
+#elseif($column.javaType == 'LocalDateTime')
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd HH:mm:ss")
+#elseif($column.javaType == 'LocalDate')
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd")
 #elseif($column.javaType == 'Date')
     @JsonFormat(pattern = "yyyy-MM-dd")
     @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd")

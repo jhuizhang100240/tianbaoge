@@ -73,6 +73,16 @@ public class HttpStatus
     public static final int CONFLICT = 409;
 
     /**
+     * 请求体过大
+     *
+     * <p>2026-09-22 补入：`docs/api-documentation.md` §业务错误码里的 413
+     * （上传超限、批量提交超限）在基线常量类里没有对应项，导致
+     * `GlobalExceptionHandler` 处理 {@code MaxUploadSizeExceededException} 时
+     * 只能散写数字字面量。其余文档已声明但此处仍缺的码：422 / 423 / 429 / 503。
+     */
+    public static final int PAYLOAD_TOO_LARGE = 413;
+
+    /**
      * 不支持的数据，媒体类型
      */
     public static final int UNSUPPORTED_TYPE = 415;

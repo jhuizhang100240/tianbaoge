@@ -41,8 +41,8 @@
       <el-form-item label="${comment}" prop="${column.javaField}">
         <el-date-picker clearable
           v-model="queryParams.${column.javaField}"
-          type="date"
-          value-format="YYYY-MM-DD"
+          type="#if($column.javaType == 'LocalDateTime')datetime#{else}date#end"
+          value-format="#if($column.javaType == 'LocalDateTime')YYYY-MM-DD HH:mm:ss#{else}YYYY-MM-DD#end"
           placeholder="选择${comment}">
         </el-date-picker>
       </el-form-item>
@@ -50,8 +50,8 @@
       <el-form-item label="${comment}" style="width: 308px">
         <el-date-picker
           v-model="daterange${AttrName}"
-          value-format="YYYY-MM-DD"
-          type="daterange"
+          value-format="#if($column.javaType == 'LocalDateTime')YYYY-MM-DD HH:mm:ss#{else}YYYY-MM-DD#end"
+          type="#if($column.javaType == 'LocalDateTime')datetimerange#{else}daterange#end"
           range-separator="-"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -107,7 +107,7 @@
 #elseif($column.list && $column.htmlType == "datetime")
       <el-table-column label="${comment}" align="center" prop="${javaField}" width="180">
         <template #default="scope">
-          <span>{{ parseTime(scope.row.${javaField}, '{y}-{m}-{d}') }}</span>
+          <span>{{ parseTime(scope.row.${javaField}, '#if($column.javaType == 'LocalDateTime'){y}-{m}-{d} {h}:{i}:{s}#{else}{y}-{m}-{d}#end') }}</span>
         </template>
       </el-table-column>
 #elseif($column.list && $column.htmlType == "imageUpload")
@@ -284,8 +284,8 @@
             <el-form-item label="${comment}" prop="${field}">
               <el-date-picker clearable
                 v-model="form.${field}"
-                type="date"
-                value-format="YYYY-MM-DD"
+                type="#if($column.javaType == 'LocalDateTime')datetime#{else}date#end"
+                value-format="#if($column.javaType == 'LocalDateTime')YYYY-MM-DD HH:mm:ss#{else}YYYY-MM-DD#end"
                 placeholder="选择${comment}">
               </el-date-picker>
             </el-form-item>

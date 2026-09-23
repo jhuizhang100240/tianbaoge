@@ -51,9 +51,19 @@ public class GenUtils
             String htmlType = columnLength >= 500 || arraysContains(GenConstants.COLUMNTYPE_TEXT, dataType) ? GenConstants.HTML_TEXTAREA : GenConstants.HTML_INPUT;
             column.setHtmlType(htmlType);
         }
-        else if (arraysContains(GenConstants.COLUMNTYPE_TIME, dataType))
+        else if (arraysContains(GenConstants.COLUMNTYPE_DATE, dataType))
         {
-            column.setJavaType(GenConstants.TYPE_DATE);
+            // 纯日期列（date / birthday / settle_date …）不含时间，用 LocalDate。
+            // ⚠️ 必须先于 COLUMNTYPE_TIME 判断 —— "date" 同时命中后者，顺序反了就退化成 LocalDateTime
+            column.setJavaType(GenConstants.TYPE_LOCAL_DATE);
+            column.setHtmlType(GenConstants.HTML_DATETIME);
+        }
+        else if (arraysContains(GenConstants.COLUMNTYPE_DATETIME, dataType))
+        {
+            // datetime / timestamp / time → 带时分秒的 LocalDateTime。
+            // 2026-09-22 前这里映射成 java.util.Date，且模板固定输出 @JsonFormat("yyyy-MM-dd")，
+            // 结果 datetime 列的时分秒在 JSON 里被静默截断
+            column.setJavaType(GenConstants.TYPE_LOCAL_DATE_TIME);
             column.setHtmlType(GenConstants.HTML_DATETIME);
         }
         else if (arraysContains(GenConstants.COLUMNTYPE_NUMBER, dataType))

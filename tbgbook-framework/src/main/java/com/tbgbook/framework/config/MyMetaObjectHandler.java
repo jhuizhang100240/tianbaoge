@@ -1,6 +1,6 @@
 package com.tbgbook.framework.config;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import org.apache.ibatis.reflection.MetaObject;
 import org.springframework.stereotype.Component;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
@@ -24,10 +24,10 @@ public class MyMetaObjectHandler implements MetaObjectHandler
     @Override
     public void insertFill(MetaObject metaObject)
     {
-        Date now = new Date();
+        LocalDateTime now = LocalDateTime.now();
         String operator = currentOperator();
-        this.strictInsertFill(metaObject, "createTime", Date.class, now);
-        this.strictInsertFill(metaObject, "updateTime", Date.class, now);
+        this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, now);
+        this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, now);
         this.strictInsertFill(metaObject, "createBy", String.class, operator);
         this.strictInsertFill(metaObject, "updateBy", String.class, operator);
     }
@@ -35,7 +35,7 @@ public class MyMetaObjectHandler implements MetaObjectHandler
     @Override
     public void updateFill(MetaObject metaObject)
     {
-        this.strictUpdateFill(metaObject, "updateTime", Date.class, new Date());
+        this.strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
         this.strictUpdateFill(metaObject, "updateBy", String.class, currentOperator());
     }
 

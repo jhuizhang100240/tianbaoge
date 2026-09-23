@@ -92,24 +92,6 @@
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.fasterxml.jackson.module</groupId>
-            <artifactId>jackson-module-kotlin</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-reflect</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib-jdk7</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
         <!-- 阿里JSON解析器 -->
         <dependency>
@@ -127,6 +109,13 @@
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- Excel 流式导入导出（FR-4.1.6 批量导入校验回显、NFR-P9 十万行导出）
+             版本由根 pom 的 <dependencyManagement> 管理 -->
+        <dependency>
+            <groupId>cn.idev.excel</groupId>
+            <artifactId>fastexcel</artifactId>
         </dependency>
 
         <!-- yml解析器 -->
@@ -221,68 +210,11 @@
             <version>2.0.24</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
-        </dependency>
 
-        <dependency>
-            <groupId>com.openai</groupId>
-            <artifactId>openai-java</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.squareup.okhttp3</groupId>
-                    <artifactId>okhttp</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.squareup.okio</groupId>
-                    <artifactId>okio</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib-jdk7</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib-jdk8</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-reflect</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib-jdk7</artifactId>
-        </dependency>
 
-        <!-- Kotlin Standard Library -->
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib</artifactId>
-        </dependency>
 
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-reflect</artifactId>
-        </dependency>
 
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib-jdk8</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib-jdk7</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
         <dependency>
             <groupId>junit</groupId>

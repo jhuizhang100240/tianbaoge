@@ -27,7 +27,7 @@
               <dict-tag :options="dict.type.${dictType}" :value="info.${javaField}" />
 #end
 #elseif($column.htmlType == "datetime")
-              {{ parseTime(info.${javaField}, '{y}-{m}-{d}') }}
+              {{ parseTime(info.${javaField}, '#if($column.javaType == 'LocalDateTime'){y}-{m}-{d} {h}:{i}:{s}#{else}{y}-{m}-{d}#end') }}
 #else
               {{ info.${javaField} }}
 #end

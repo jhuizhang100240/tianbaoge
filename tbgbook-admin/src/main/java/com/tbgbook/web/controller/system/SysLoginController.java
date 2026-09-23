@@ -1,6 +1,6 @@
 package com.tbgbook.web.controller.system;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,14 +113,14 @@ public class SysLoginController
     }
 
     // 检查初始密码是否提醒修改
-    public boolean initPasswordIsModify(Date pwdUpdateDate)
+    public boolean initPasswordIsModify(LocalDateTime pwdUpdateDate)
     {
         Integer initPasswordModify = Convert.toInt(configService.selectConfigByKey("sys.account.initPasswordModify"));
         return initPasswordModify != null && initPasswordModify == 1 && pwdUpdateDate == null;
     }
 
     // 检查密码是否过期
-    public boolean passwordIsExpiration(Date pwdUpdateDate)
+    public boolean passwordIsExpiration(LocalDateTime pwdUpdateDate)
     {
         Integer passwordValidateDays = Convert.toInt(configService.selectConfigByKey("sys.account.passwordValidateDays"));
         if (passwordValidateDays != null && passwordValidateDays > 0)
@@ -130,7 +130,10 @@ public class SysLoginController
                 // 如果从未修改过初始密码，直接提醒过期
                 return true;
             }
-            Date nowDate = DateUtils.getNowDate();
+            LocalDateTime nowDate = DateUtils.getNowLocalDateTime();
+            // 用 differentDaysByMillisecond 而非 differentDays —— 保持与改造前
+            // (DateUtils.differentDaysByMillisecond(now, pwdUpdateDate)) 完全相同的口径，
+            // 本次改造只换类型不改行为（两者在非整数天的边界上会差 1 天）
             return DateUtils.differentDaysByMillisecond(nowDate, pwdUpdateDate) > passwordValidateDays;
         }
         return false;

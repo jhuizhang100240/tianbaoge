@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  报损申请单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_loss_apply **没有 del_flag** —— 单据用 status 四态取代逻辑删除
+     （1待审批 2已通过 3已驳回 4已撤销），删行是真删。
+     ⚠️ 也**没有 create_by / update_by / remark**，故 resultMap 里没有这三项。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.LossApplyMapper">
+
+    <resultMap type="LossApply" id="LossApplyResult">
+        <result property="applyId"       column="apply_id"       />
+        <result property="storeId"       column="store_id"       />
+        <result property="applyNo"       column="apply_no"       />
+        <result property="lossType"      column="loss_type"      />
+        <result property="bookKind"      column="book_kind"      />
+        <result property="totalQty"      column="total_qty"      />
+        <result property="totalAmount"   column="total_amount"   />
+        <result property="needConfirm"   column="need_confirm"   />
+        <result property="reason"        column="reason"         />
+        <result property="attachmentUrl" column="attachment_url" />
+        <result property="status"        column="status"         />
+        <result property="applyBy"       column="apply_by"       />
+        <result property="applyTime"     column="apply_time"     />
+        <result property="auditBy"       column="audit_by"       />
+        <result property="auditTime"     column="audit_time"     />
+        <result property="auditRemark"   column="audit_remark"   />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateTime"    column="update_time"    />
+    </resultMap>
+
+    <select id="selectLossApplyList" parameterType="LossApply" resultMap="LossApplyResult">
+        select t.apply_id, t.store_id, t.apply_no, t.loss_type, t.book_kind, t.total_qty,
+               t.total_amount, t.need_confirm, t.reason, t.attachment_url, t.status,
+               t.apply_by, t.apply_time, t.audit_by, t.audit_time, t.audit_remark,
+               t.create_time, t.update_time
+        from biz_loss_apply t
+        <where>
+            <if test="applyNo != null and applyNo != ''">
+                and t.apply_no = #{applyNo}
+            </if>
+            <if test="lossType != null">
+                and t.loss_type = #{lossType}
+            </if>
+            <if test="status != null">
+                and t.status = #{status}
+            </if>
+            <if test="applyBy != null and applyBy != ''">
+                and t.apply_by = #{applyBy}
+            </if>
+            <if test="needConfirm != null">
+                and t.need_confirm = #{needConfirm}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.apply_id desc
+    </select>
+
+    <!-- 预取下一个自增主键：apply_no 是 NOT NULL + 唯一索引，插入前必须先给出值 -->
+    <select id="selectNextApplyId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_loss_apply'
+    </select>
+</mapper>

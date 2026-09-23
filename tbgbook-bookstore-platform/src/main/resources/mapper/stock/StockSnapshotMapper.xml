@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存快照主表 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 按日期取一条（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_stock_snapshot **只有 create_time**，没有 create_by/update_*/remark/del_flag
+     —— 系统产出的数据没有「谁改的」这一问。故查询里没有 `del_flag = '0'`。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockSnapshotMapper">
+
+    <resultMap type="StockSnapshot" id="StockSnapshotResult">
+        <result property="snapshotId"   column="snapshot_id"   />
+        <result property="storeId"      column="store_id"      />
+        <result property="snapshotDate" column="snapshot_date" />
+        <result property="bookKind"     column="book_kind"     />
+        <result property="totalQty"     column="total_qty"     />
+        <result property="qtyAvailable" column="qty_available" />
+        <result property="qtyLocked"    column="qty_locked"    />
+        <result property="qtyBorrowed"  column="qty_borrowed"  />
+        <result property="qtyDamaged"   column="qty_damaged"   />
+        <result property="totalAmount"  column="total_amount"  />
+        <result property="createTime"   column="create_time"   />
+    </resultMap>
+
+    <sql id="cols">
+        s.snapshot_id, s.store_id, s.snapshot_date, s.book_kind, s.total_qty,
+        s.qty_available, s.qty_locked, s.qty_borrowed, s.qty_damaged,
+        s.total_amount, s.create_time
+    </sql>
+
+    <select id="selectStockSnapshotList" parameterType="StockSnapshot" resultMap="StockSnapshotResult">
+        select <include refid="cols" />
+        from biz_stock_snapshot s
+        <where>
+            <if test="snapshotDate != null">
+                and s.snapshot_date = #{snapshotDate}
+            </if>
+            <if test="params.beginSnapshotDate != null and params.beginSnapshotDate != ''">
+                and s.snapshot_date &gt;= #{params.beginSnapshotDate}
+            </if>
+            <if test="params.endSnapshotDate != null and params.endSnapshotDate != ''">
+                and s.snapshot_date &lt;= #{params.endSnapshotDate}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and s.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and s.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by s.snapshot_date desc, s.snapshot_id desc
+    </select>
+
+    <!-- 按日期取（uk_store_date 保证至多一条），供「按日期对比」使用 -->
+    <select id="selectByDate" resultMap="StockSnapshotResult">
+        select <include refid="cols" />
+        from biz_stock_snapshot s
+        where s.snapshot_date = #{snapshotDate}
+        limit 1
+    </select>
+</mapper>

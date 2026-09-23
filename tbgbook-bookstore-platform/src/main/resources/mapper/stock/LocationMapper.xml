@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库位 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.LocationMapper">
+
+    <resultMap type="Location" id="LocationResult">
+        <result property="locationId"   column="location_id"   />
+        <result property="storeId"      column="store_id"      />
+        <result property="locationCode" column="location_code" />
+        <result property="locationName" column="location_name" />
+        <result property="zone"         column="zone"          />
+        <result property="shelfNo"      column="shelf_no"      />
+        <result property="layerNo"      column="layer_no"      />
+        <result property="orderNum"     column="order_num"     />
+        <result property="status"       column="status"        />
+        <result property="delFlag"      column="del_flag"      />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateBy"     column="update_by"     />
+        <result property="updateTime"   column="update_time"   />
+        <result property="remark"       column="remark"        />
+    </resultMap>
+
+    <sql id="selectLocationVo">
+        select location_id, store_id, location_code, location_name, zone, shelf_no, layer_no,
+               order_num, status, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from biz_location
+    </sql>
+
+    <select id="selectLocationList" parameterType="Location" resultMap="LocationResult">
+        <include refid="selectLocationVo"/>
+        <where>
+            del_flag = '0'
+            <if test="locationCode != null and locationCode != ''">
+                and location_code like concat('%', #{locationCode}, '%')
+            </if>
+            <if test="locationName != null and locationName != ''">
+                and location_name like concat('%', #{locationName}, '%')
+            </if>
+            <if test="zone != null and zone != ''">
+                and zone = #{zone}
+            </if>
+            <if test="status != null and status != ''">
+                and status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        <!-- 按「区域 → 排 → 层」排，与货架物理顺序一致，店员照着走即可 -->
+        order by zone asc, shelf_no asc, layer_no asc, order_num asc, location_id asc
+    </select>
+</mapper>

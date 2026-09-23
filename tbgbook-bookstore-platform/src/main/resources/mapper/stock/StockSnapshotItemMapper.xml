@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存快照明细 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 按图书聚合（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_stock_snapshot_item **连 create_time 都没有**（时间取主表），
+     也没有 del_flag —— 故 resultMap 里没有任何审计字段。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockSnapshotItemMapper">
+
+    <resultMap type="StockSnapshotItem" id="StockSnapshotItemResult">
+        <result property="itemId"       column="item_id"       />
+        <result property="snapshotId"   column="snapshot_id"   />
+        <result property="bookId"       column="book_id"       />
+        <result property="isbn"         column="isbn"          />
+        <result property="locationId"   column="location_id"   />
+        <result property="qtyAvailable" column="qty_available" />
+        <result property="qtyLocked"    column="qty_locked"    />
+        <result property="qtyBorrowed"  column="qty_borrowed"  />
+        <result property="qtyDamaged"   column="qty_damaged"   />
+        <result property="costPrice"    column="cost_price"    />
+        <result property="amount"       column="amount"        />
+    </resultMap>
+
+    <select id="selectStockSnapshotItemList" parameterType="StockSnapshotItem" resultMap="StockSnapshotItemResult">
+        select i.item_id, i.snapshot_id, i.book_id, i.isbn, i.location_id,
+               i.qty_available, i.qty_locked, i.qty_borrowed, i.qty_damaged,
+               i.cost_price, i.amount
+        from biz_stock_snapshot_item i
+        <where>
+            <if test="snapshotId != null">
+                and i.snapshot_id = #{snapshotId}
+            </if>
+            <if test="bookId != null">
+                and i.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and i.isbn = #{isbn}
+            </if>
+            <if test="locationId != null">
+                and i.location_id = #{locationId}
+            </if>
+        </where>
+        order by i.item_id asc
+    </select>
+
+    <!--
+      按图书聚合（跨库位求和），供对比使用。
+      ⚠️ 书名取 biz_book 的**当前**书名，且**不加 del_flag 过滤** ——
+         历史快照不该因为图书改名或下架而显示不出书名；书真被删了也保留 ISBN 可查。
+    -->
+    <select id="selectBookAggBySnapshot" resultType="SnapshotBookAgg">
+        select i.book_id as bookId,
+               max(i.isbn) as isbn,
+               max(b.title) as title,
+               sum(i.qty_available + i.qty_locked + i.qty_borrowed + i.qty_damaged) as qty,
+               sum(ifnull(i.amount, 0)) as amount
+        from biz_stock_snapshot_item i
+        left join biz_book b on b.book_id = i.book_id
+        where i.snapshot_id = #{snapshotId}
+        group by i.book_id
+        order by i.book_id
+    </select>
+</mapper>

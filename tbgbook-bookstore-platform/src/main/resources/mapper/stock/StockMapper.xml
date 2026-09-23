@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 聚合（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+  ⚠️ biz_stock **没有 del_flag**（正价书库存按「图书+库位」唯一，删行即物理删）——
+     故下面的查询不写 `del_flag = '0'`；对 biz_book 用 LEFT JOIN，
+     而图书被引用时不允许删除（图书域的删除保护），所以 JOIN 实际不会落空。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockMapper">
+
+    <resultMap type="Stock" id="StockResult">
+        <result property="stockId"      column="stock_id"      />
+        <result property="storeId"      column="store_id"      />
+        <result property="bookId"       column="book_id"       />
+        <result property="locationId"   column="location_id"   />
+        <result property="qtyAvailable" column="qty_available" />
+        <result property="qtyLocked"    column="qty_locked"    />
+        <result property="qtyBorrowed"  column="qty_borrowed"  />
+        <result property="qtyDamaged"   column="qty_damaged"   />
+        <result property="safetyQty"    column="safety_qty"    />
+        <result property="version"      column="version"       />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+        <!-- 非表字段：原型 A-14 表格的「书名/ISBN/分类/库位」四列，避免前端按行回查 -->
+        <result property="isbn"         column="book_isbn"     />
+        <result property="title"        column="book_title"    />
+        <result property="categoryName" column="category_name" />
+        <result property="locationCode" column="location_code" />
+        <result property="locationName" column="location_name" />
+    </resultMap>
+
+    <sql id="selectStockVo">
+        select s.stock_id, s.store_id, s.book_id, s.location_id,
+               s.qty_available, s.qty_locked, s.qty_borrowed, s.qty_damaged,
+               s.safety_qty, s.version, s.create_time, s.update_time,
+               b.isbn as book_isbn, b.title as book_title,
+               c.category_name as category_name,
+               l.location_code as location_code, l.location_name as location_name
+        from biz_stock s
+        left join biz_book b on b.book_id = s.book_id
+        left join biz_category c on c.category_id = b.category_id
+        left join biz_location l on l.location_id = s.location_id
+    </sql>
+
+    <select id="selectStockList" parameterType="Stock" resultMap="StockResult">
+        <include refid="selectStockVo"/>
+        <where>
+            <if test="bookId != null">
+                and s.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and b.isbn = #{isbn}
+            </if>
+            <if test="title != null and title != ''">
+                and b.title like concat('%', #{title}, '%')
+            </if>
+            <if test="locationId != null">
+                and s.location_id = #{locationId}
+            </if>
+            <if test="hasAvailable != null and hasAvailable">
+                and s.qty_available &gt; 0
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and s.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and s.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by s.book_id desc, s.location_id asc
+    </select>
+
+    <!--
+      总览四类合计 + 品种数 + 库存总金额（A-14 顶部指标卡）。
+      ⚠️ 金额是**成本口径**（实物总量 × 成本价），需 JOIN biz_book 取 cost_price；
+         调用方按 inventory:cost:view 决定是否置 null（FR-4.6 规则 5）——
+         这里照常算出来，**裁剪在服务层**（权限判断集中在 Service，见后端 CLAUDE.md §四）。
+      ⚠️ 聚合列用 ifnull 兜底：无数据时 sum 返回 NULL，会让前端拿到 null 而不是 0。
+    -->
+    <select id="selectOverviewTotals" parameterType="Stock" resultType="StockOverview">
+        select ifnull(sum(s.qty_available), 0) as qtyAvailable,
+               ifnull(sum(s.qty_locked),    0) as qtyLocked,
+               ifnull(sum(s.qty_borrowed),  0) as qtyBorrowed,
+               ifnull(sum(s.qty_damaged),   0) as qtyDamaged,
+               count(distinct s.book_id)       as bookKind,
+               ifnull(sum((s.qty_available + s.qty_locked + s.qty_borrowed + s.qty_damaged)
+                          * b.cost_price), 0)  as totalAmount
+        from biz_stock s
+        left join biz_book b on b.book_id = s.book_id
+        <where>
+            <if test="locationId != null">
+                and s.location_id = #{locationId}
+            </if>
+            <if test="categoryId != null">
+                and b.category_id = #{categoryId}
+            </if>
+        </where>
+    </select>
+
+    <!-- 分类库存分布（A-14 饼图）。按金额倒序，占比由服务层算（避免在 SQL 里除零） -->
+    <select id="selectCategoryDistribution" parameterType="Stock" resultType="CategoryStock">
+        select b.category_id                                   as categoryId,
+               ifnull(c.category_name, '未分类')                as categoryName,
+               count(distinct s.book_id)                       as bookKind,
+               ifnull(sum(s.qty_available + s.qty_locked + s.qty_borrowed + s.qty_damaged), 0) as totalQty,
+               ifnull(sum((s.qty_available + s.qty_locked + s.qty_borrowed + s.qty_damaged)
+                          * b.cost_price), 0)                  as totalAmount
+        from biz_stock s
+        left join biz_book b on b.book_id = s.book_id
+        left join biz_category c on c.category_id = b.category_id
+        <where>
+            <if test="locationId != null">
+                and s.location_id = #{locationId}
+            </if>
+        </where>
+        group by b.category_id, c.category_name
+        order by totalAmount desc, totalQty desc
+    </select>
+
+    <!--
+      四类预警数量（只统计待处理）。用 case when 把 warning_type 竖表转成四列，
+      省得服务层再去分组。⚠️ 表里没有行时 sum 为 NULL → ifnull 兜成 0。
+    -->
+    <select id="selectWarningCounts" resultType="WarningCounts">
+        select ifnull(sum(case when warning_type = 1 then 1 else 0 end), 0) as refill,
+               ifnull(sum(case when warning_type = 2 then 1 else 0 end), 0) as slowMoving,
+               ifnull(sum(case when warning_type = 3 then 1 else 0 end), 0) as nearExpiry,
+               ifnull(sum(case when warning_type = 4 then 1 else 0 end), 0) as zeroStock
+        from biz_stock_warning
+        where handle_status = 1
+    </select>
+
+    <!-- 扫码查书：按图书汇总、逐库位展开（含库位编码/名称/区域，便于店员找书） -->
+    <select id="selectStocksByBookId" resultType="ScanStock">
+        select s.location_id    as locationId,
+               l.location_code  as locationCode,
+               l.location_name  as locationName,
+               l.zone           as zone,
+               s.qty_available  as qtyAvailable,
+               s.qty_locked     as qtyLocked,
+               s.qty_borrowed   as qtyBorrowed,
+               s.qty_damaged    as qtyDamaged
+        from biz_stock s
+        left join biz_location l on l.location_id = s.location_id
+        where s.book_id = #{bookId}
+        order by s.qty_available desc, s.location_id asc
+    </select>
+
+    <!--
+      安全库存写回（派生列，不参与乐观锁 —— 理由见 StockMapper#updateSafetyQty 注释）
+    -->
+    <update id="updateSafetyQty">
+        update biz_stock
+        set safety_qty = #{safetyQty}, update_time = now()
+        where book_id = #{bookId}
+    </update>
+</mapper>

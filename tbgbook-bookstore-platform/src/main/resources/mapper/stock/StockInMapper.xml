@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  采购入库单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_stock_in **没有 del_flag**（单据用 status 三态取代逻辑删除）——
+     故查询里没有 `del_flag = '0'` 这一条，删行是真删。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockInMapper">
+
+    <resultMap type="StockIn" id="StockInResult">
+        <result property="inId"         column="in_id"         />
+        <result property="storeId"      column="store_id"      />
+        <result property="inNo"         column="in_no"         />
+        <result property="inType"       column="in_type"       />
+        <result property="supplierName" column="supplier_name" />
+        <result property="bookKind"     column="book_kind"     />
+        <result property="totalQty"     column="total_qty"     />
+        <result property="totalAmount"  column="total_amount"  />
+        <result property="status"       column="status"        />
+        <result property="inTime"       column="in_time"       />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateBy"     column="update_by"     />
+        <result property="updateTime"   column="update_time"   />
+        <result property="remark"       column="remark"        />
+    </resultMap>
+
+    <select id="selectStockInList" parameterType="StockIn" resultMap="StockInResult">
+        select i.in_id, i.store_id, i.in_no, i.in_type, i.supplier_name,
+               i.book_kind, i.total_qty, i.total_amount, i.status, i.in_time,
+               i.create_by, i.create_time, i.update_by, i.update_time, i.remark
+        from biz_stock_in i
+        <where>
+            <if test="inNo != null and inNo != ''">
+                and i.in_no = #{inNo}
+            </if>
+            <if test="inType != null">
+                and i.in_type = #{inType}
+            </if>
+            <if test="supplierName != null and supplierName != ''">
+                and i.supplier_name like concat('%', #{supplierName}, '%')
+            </if>
+            <if test="status != null">
+                and i.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and i.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and i.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by i.in_id desc
+    </select>
+
+    <!-- 预取下一个自增主键：in_no 是 NOT NULL + 唯一索引，插入前必须先给出值 -->
+    <select id="selectNextInId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_stock_in'
+    </select>
+</mapper>

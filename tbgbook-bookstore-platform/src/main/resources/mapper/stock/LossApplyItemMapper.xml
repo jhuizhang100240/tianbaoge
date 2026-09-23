@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  报损申请明细 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的（后端 CLAUDE.md §五）；不写 SELECT *；一律 #{}
+  ⚠️ isbn / title 是本表的**冗余列**（不是 JOIN 来的）—— 单据要能脱离图书表独立呈现。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.LossApplyItemMapper">
+
+    <resultMap type="LossApplyItem" id="LossApplyItemResult">
+        <result property="itemId"     column="item_id"     />
+        <result property="applyId"    column="apply_id"    />
+        <result property="bookId"     column="book_id"     />
+        <result property="isbn"       column="isbn"        />
+        <result property="title"      column="title"       />
+        <result property="locationId" column="location_id" />
+        <result property="qty"        column="qty"         />
+        <result property="unitCost"   column="unit_cost"   />
+        <result property="amount"     column="amount"      />
+        <result property="stockQty"   column="stock_qty"   />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <select id="selectLossApplyItemList" parameterType="LossApplyItem" resultMap="LossApplyItemResult">
+        select t.item_id, t.apply_id, t.book_id, t.isbn, t.title, t.location_id,
+               t.qty, t.unit_cost, t.amount, t.stock_qty, t.create_time
+        from biz_loss_apply_item t
+        <where>
+            <if test="applyId != null">
+                and t.apply_id = #{applyId}
+            </if>
+            <if test="bookId != null">
+                and t.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and t.isbn = #{isbn}
+            </if>
+            <if test="locationId != null">
+                and t.location_id = #{locationId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.item_id asc
+    </select>
+
+    <delete id="deleteByApplyIds">
+        delete from biz_loss_apply_item where apply_id in
+        <foreach collection="applyIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+</mapper>

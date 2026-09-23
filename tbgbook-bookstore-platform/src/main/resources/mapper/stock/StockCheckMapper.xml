@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存盘点单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的（后端 CLAUDE.md §五）；不写 SELECT *；一律 #{}
+  ⚠️ biz_stock_check **没有 del_flag**（作废是 status=4），故查询里没有 del_flag 条件
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockCheckMapper">
+
+    <resultMap type="StockCheck" id="StockCheckResult">
+        <result property="checkId"         column="check_id"          />
+        <result property="storeId"         column="store_id"          />
+        <result property="checkNo"         column="check_no"          />
+        <result property="checkType"       column="check_type"        />
+        <result property="scopeType"       column="scope_type"        />
+        <result property="scopeValue"      column="scope_value"       />
+        <result property="showBookQty"     column="show_book_qty"     />
+        <result property="bookKindTotal"   column="book_kind_total"   />
+        <result property="bookKindChecked" column="book_kind_checked" />
+        <result property="qtyBookTotal"    column="qty_book_total"    />
+        <result property="qtyActualTotal"  column="qty_actual_total"  />
+        <result property="qtyGain"         column="qty_gain"          />
+        <result property="qtyLoss"         column="qty_loss"          />
+        <result property="diffKindCount"   column="diff_kind_count"   />
+        <result property="diffRate"        column="diff_rate"         />
+        <result property="needRecheck"     column="need_recheck"      />
+        <result property="status"          column="status"            />
+        <result property="startTime"       column="start_time"        />
+        <result property="endTime"         column="end_time"          />
+        <result property="createBy"        column="create_by"         />
+        <result property="createTime"      column="create_time"       />
+        <result property="updateBy"        column="update_by"         />
+        <result property="updateTime"      column="update_time"       />
+        <result property="remark"          column="remark"            />
+    </resultMap>
+
+    <select id="selectStockCheckList" parameterType="StockCheck" resultMap="StockCheckResult">
+        select c.check_id, c.store_id, c.check_no, c.check_type, c.scope_type, c.scope_value,
+               c.show_book_qty, c.book_kind_total, c.book_kind_checked, c.qty_book_total,
+               c.qty_actual_total, c.qty_gain, c.qty_loss, c.diff_kind_count, c.diff_rate,
+               c.need_recheck, c.status, c.start_time, c.end_time,
+               c.create_by, c.create_time, c.update_by, c.update_time, c.remark
+        from biz_stock_check c
+        <where>
+            <if test="checkNo != null and checkNo != ''">
+                and c.check_no = #{checkNo}
+            </if>
+            <if test="checkType != null">
+                and c.check_type = #{checkType}
+            </if>
+            <if test="scopeType != null">
+                and c.scope_type = #{scopeType}
+            </if>
+            <if test="status != null">
+                and c.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and c.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and c.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by c.check_id desc
+    </select>
+
+    <!-- 预取下一个自增主键：check_no 是 NOT NULL + 唯一索引，插入前必须先给出值 -->
+    <select id="selectNextCheckId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_stock_check'
+    </select>
+</mapper>

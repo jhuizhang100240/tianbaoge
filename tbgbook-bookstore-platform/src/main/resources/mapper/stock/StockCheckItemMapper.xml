@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存盘点明细 Mapper XML
+  ⚠️ isbn / title 是本表的**冗余列**（生成盘点单时快照），不是 JOIN 来的 ——
+     盘点单要能脱离图书表独立呈现（图书改名后，历史盘点单应显示当时的书名）。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockCheckItemMapper">
+
+    <resultMap type="StockCheckItem" id="StockCheckItemResult">
+        <result property="itemId"       column="item_id"        />
+        <result property="checkId"      column="check_id"       />
+        <result property="bookId"       column="book_id"        />
+        <result property="isbn"         column="isbn"           />
+        <result property="title"        column="title"          />
+        <result property="locationId"   column="location_id"    />
+        <result property="bookQty"      column="book_qty"       />
+        <result property="actualQty"    column="actual_qty"     />
+        <result property="diffQty"      column="diff_qty"       />
+        <result property="diffAmount"   column="diff_amount"    />
+        <result property="diffType"     column="diff_type"      />
+        <result property="isPeriodDiff" column="is_period_diff" />
+        <result property="reason"       column="reason"         />
+        <result property="suggestion"   column="suggestion"     />
+        <result property="checkedBy"    column="checked_by"     />
+        <result property="checkTime"    column="check_time"     />
+    </resultMap>
+
+    <select id="selectStockCheckItemList" parameterType="StockCheckItem" resultMap="StockCheckItemResult">
+        select t.item_id, t.check_id, t.book_id, t.isbn, t.title, t.location_id,
+               t.book_qty, t.actual_qty, t.diff_qty, t.diff_amount, t.diff_type,
+               t.is_period_diff, t.reason, t.suggestion, t.checked_by, t.check_time
+        from biz_stock_check_item t
+        <where>
+            <if test="checkId != null">
+                and t.check_id = #{checkId}
+            </if>
+            <if test="bookId != null">
+                and t.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and t.isbn = #{isbn}
+            </if>
+            <if test="diffType != null">
+                and t.diff_type = #{diffType}
+            </if>
+            <if test="isPeriodDiff != null">
+                and t.is_period_diff = #{isPeriodDiff}
+            </if>
+        </where>
+        order by t.item_id asc
+    </select>
+
+    <!-- 「未录入」= check_time 为空（不是 actual_qty=0，见 Mapper 接口的说明） -->
+    <select id="countUnentered" resultType="int">
+        select count(*) from biz_stock_check_item
+        where check_id = #{checkId} and check_time is null and book_qty &lt;&gt; 0
+    </select>
+
+    <delete id="deleteByCheckIds">
+        delete from biz_stock_check_item where check_id in
+        <foreach collection="checkIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+</mapper>

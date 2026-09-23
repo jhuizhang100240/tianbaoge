@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书主档 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+
+  四类库存聚合（原型 A-06 的「四类库存合计」列）：
+    biz_stock 是「按图书 + 库位」存行的，同一本书可能在多个库位有库存，
+    因此必须按 book_id 汇总。这里用**一次 LEFT JOIN 派生表**完成，
+    而不是给四个字段各写一个相关子查询 —— 后者每行要扫 4 次 biz_stock。
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookMapper">
+
+    <resultMap type="Book" id="BookResult">
+        <result property="bookId"          column="book_id"          />
+        <result property="storeId"         column="store_id"         />
+        <result property="bookNo"          column="book_no"          />
+        <result property="isbn"            column="isbn"             />
+        <result property="title"           column="title"            />
+        <result property="subtitle"        column="subtitle"         />
+        <result property="author"          column="author"           />
+        <result property="translator"      column="translator"       />
+        <result property="publisherId"     column="publisher_id"     />
+        <result property="publisherName"   column="publisher_name"   />
+        <result property="publishDate"     column="publish_date"     />
+        <result property="edition"         column="edition"          />
+        <result property="binding"         column="binding"          />
+        <result property="pageCount"       column="page_count"       />
+        <result property="categoryId"      column="category_id"      />
+        <result property="bookType"        column="book_type"        />
+        <result property="price"           column="price"            />
+        <result property="memberPrice"     column="member_price"     />
+        <result property="costPrice"       column="cost_price"       />
+        <result property="coverUrl"        column="cover_url"        />
+        <result property="summary"         column="summary"          />
+        <result property="summarySource"   column="summary_source"   />
+        <result property="infoStatus"      column="info_status"      />
+        <result property="status"          column="status"           />
+        <result property="publishStatus"   column="publish_status"   />
+        <result property="saleCount"       column="sale_count"       />
+        <result property="delFlag"         column="del_flag"         />
+        <result property="createBy"        column="create_by"        />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateBy"        column="update_by"        />
+        <result property="updateTime"      column="update_time"      />
+        <result property="remark"          column="remark"           />
+        <!-- 四类库存聚合（非本表字段） -->
+        <result property="qtyAvailable"    column="qty_available"    />
+        <result property="qtyLocked"       column="qty_locked"       />
+        <result property="qtyBorrowed"     column="qty_borrowed"     />
+        <result property="qtyDamaged"      column="qty_damaged"      />
+    </resultMap>
+
+    <!--
+      四类库存聚合（原型 A-06 的「四类库存合计」列）。
+
+      ⚠️ **不要改回「LEFT JOIN (select book_id, sum(...) from biz_stock group by book_id)」** ——
+      那是初版写法，在 3 万册压测下是**整条列表查询的瓶颈**：
+        · 派生表**没有任何过滤**，每次请求都把整张 biz_stock 聚合一遍；
+        · 它是 FROM 子句的一部分，所以 **PageHelper 的 COUNT 查询也带着它** ——
+          等于每次列表请求聚合两遍；
+        · 实测（3 万册）：数据查询 110~123ms、COUNT 59ms，而查询本身只需 0.1ms。
+
+      改成**关联标量子查询**后：
+        · 数据查询只在 LIMIT 命中的那几行上求值 → 实测 0.000~0.145ms；
+        · 标量子查询在 SELECT 列表里，PageHelper 把 select 列表替换成 count(0) 时
+          **会一并剥掉**，COUNT 不再付这份成本（实测 isbn 精确 59ms → 0.002ms）。
+      代价：真正需要全表扫的 COUNT（如 title LIKE '%关键词%'）仍要 39ms —— 那是扫描成本，
+      不是这份聚合的成本，且已在 NFR-P4 的 300ms 预算内。
+    -->
+    <sql id="selectBookVo">
+        select b.book_id, b.store_id, b.book_no, b.isbn, b.title, b.subtitle, b.author,
+               b.translator, b.publisher_id, b.publisher_name, b.publish_date, b.edition,
+               b.binding, b.page_count, b.category_id, b.book_type, b.price, b.member_price,
+               b.cost_price, b.cover_url, b.summary, b.summary_source, b.info_status,
+               b.status, b.publish_status, b.sale_count, b.del_flag,
+               b.create_by, b.create_time, b.update_by, b.update_time, b.remark,
+               (select ifnull(sum(s.qty_available), 0) from biz_stock s where s.book_id = b.book_id) as qty_available,
+               (select ifnull(sum(s.qty_locked),    0) from biz_stock s where s.book_id = b.book_id) as qty_locked,
+               (select ifnull(sum(s.qty_borrowed),  0) from biz_stock s where s.book_id = b.book_id) as qty_borrowed,
+               (select ifnull(sum(s.qty_damaged),   0) from biz_stock s where s.book_id = b.book_id) as qty_damaged
+        from biz_book b
+    </sql>
+
+    <select id="selectBookList" parameterType="Book" resultMap="BookResult">
+        <include refid="selectBookVo"/>
+        <where>
+            b.del_flag = '0'
+            <if test="isbn != null and isbn != ''">
+                and b.isbn = #{isbn}
+            </if>
+            <if test="bookNo != null and bookNo != ''">
+                and b.book_no = #{bookNo}
+            </if>
+            <if test="title != null and title != ''">
+                and b.title like concat('%', #{title}, '%')
+            </if>
+            <if test="author != null and author != ''">
+                and b.author like concat('%', #{author}, '%')
+            </if>
+            <if test="publisherId != null and publisherId != 0">
+                and b.publisher_id = #{publisherId}
+            </if>
+            <if test="categoryId != null and categoryId != 0">
+                and b.category_id = #{categoryId}
+            </if>
+            <if test="bookType != null">
+                and b.book_type = #{bookType}
+            </if>
+            <if test="status != null">
+                and b.status = #{status}
+            </if>
+            <if test="publishStatus != null">
+                and b.publish_status = #{publishStatus}
+            </if>
+            <if test="infoStatus != null">
+                and b.info_status = #{infoStatus}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.book_id desc
+    </select>
+
+    <!--
+      图书下拉选项（GET /book/book/options）。
+      ⚠️ 契约明写「支持关键词远程搜索，不分页返回全量」—— 所以这里**没有**配合 startPage()，
+         limit 是 SQL 自己的 limit，由服务层夹到 [1,50] 后绑定（#{} 而非 ${}，NFR-S6）。
+      ⚠️ 排序：关键词**精确命中**编号或 ISBN 的排最前。该接口的主要消费场景是扫码枪录入，
+         扫到的码必须第一条命中，否则操作员要在 20 条里翻。
+         case 表达式在 keyword 为空时整体不出现（外层 <if>），故无谓词残留。
+    -->
+    <select id="selectBookOptions" resultType="BookOption">
+        select b.book_id as bookId, b.book_no as bookNo, b.isbn, b.title,
+               b.price, b.cover_url as coverUrl
+        from biz_book b
+        where b.del_flag = '0'
+        <if test="keyword != null and keyword != ''">
+            and (b.title   like concat('%', #{keyword}, '%')
+                 or b.isbn  like concat('%', #{keyword}, '%')
+                 or b.book_no like concat('%', #{keyword}, '%'))
+        </if>
+        order by
+        <if test="keyword != null and keyword != ''">
+            (case when b.book_no = #{keyword} or b.isbn = #{keyword} then 0 else 1 end),
+        </if>
+            b.book_id desc
+        limit #{limit}
+    </select>
+
+    <!--
+      标签打印数据（POST /book/book/label/print）。
+      · barCode 直接取 book_no（BK+8位流水，需求 §3.2），不另生成条码；
+      · locationCode 取**可售数最多**的库位 —— 用关联标量子查询而非 LEFT JOIN + GROUP BY，
+        因为「取可售数最大的那一行」不是聚合而是排序取首，标量子查询 + order by + limit 1 最直白，
+        且只对 in 命中的那几行求值（与 selectBookVo 的四类库存聚合同一手法）。
+        排序口径与 biz_stock 的 selectStocksByBookId、ScanResult.shelfHint 完全一致。
+      ⚠️ 结果**不保证与 bookIds 入参同序**（in 不保序），调用方按 bookId 归位。
+    -->
+    <select id="selectBookLabels" resultType="BookLabel">
+        select b.book_id as bookId, b.book_no as barCode, b.isbn, b.title, b.price,
+               (select l.location_code
+                  from biz_stock s
+                  left join biz_location l on l.location_id = s.location_id
+                 where s.book_id = b.book_id
+                 order by s.qty_available desc, s.location_id asc
+                 limit 1) as locationCode
+        from biz_book b
+        where b.del_flag = '0'
+          and b.book_id in
+          <foreach collection="bookIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 预取下一个自增主键：book_no 是 NOT NULL 无默认值，插入前必须先给出值 -->
+    <select id="selectNextBookId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_book'
+    </select>
+</mapper>

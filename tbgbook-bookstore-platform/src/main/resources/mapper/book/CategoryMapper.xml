@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书分类 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.CategoryMapper">
+
+    <resultMap type="Category" id="CategoryResult">
+        <result property="categoryId"     column="category_id"    />
+        <result property="storeId"        column="store_id"       />
+        <result property="parentId"       column="parent_id"      />
+        <result property="ancestors"      column="ancestors"      />
+        <result property="categoryName"   column="category_name"  />
+        <result property="categoryLevel"  column="category_level" />
+        <result property="orderNum"       column="order_num"      />
+        <result property="status"         column="status"         />
+        <result property="delFlag"        column="del_flag"       />
+        <result property="createBy"       column="create_by"      />
+        <result property="createTime"     column="create_time"    />
+        <result property="updateBy"       column="update_by"      />
+        <result property="updateTime"     column="update_time"    />
+        <result property="remark"         column="remark"         />
+        <!-- 非表字段：关联图书数，删除前提示引用数量用 -->
+        <result property="bookCount"      column="book_count"     />
+    </resultMap>
+
+    <sql id="selectCategoryVo">
+        select c.category_id, c.store_id, c.parent_id, c.ancestors, c.category_name,
+               c.category_level, c.order_num, c.status, c.del_flag,
+               c.create_by, c.create_time, c.update_by, c.update_time, c.remark,
+               (select count(*) from biz_book b
+                 where b.category_id = c.category_id and b.del_flag = '0') as book_count
+        from biz_category c
+    </sql>
+
+    <select id="selectCategoryList" parameterType="Category" resultMap="CategoryResult">
+        <include refid="selectCategoryVo"/>
+        <where>
+            c.del_flag = '0'
+            <if test="categoryName != null and categoryName != ''">
+                and c.category_name like concat('%', #{categoryName}, '%')
+            </if>
+            <if test="parentId != null">
+                and c.parent_id = #{parentId}
+            </if>
+            <if test="status != null and status != ''">
+                and c.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and c.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and c.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by c.parent_id asc, c.order_num asc, c.category_id asc
+    </select>
+</mapper>

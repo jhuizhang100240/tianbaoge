@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  教材扩展信息 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookTextbookMapper">
+
+    <resultMap type="BookTextbook" id="BookTextbookResult">
+        <result property="bookId"      column="book_id"     />
+        <result property="storeId"     column="store_id"    />
+        <result property="major"       column="major"       />
+        <result property="term"        column="term"        />
+        <result property="college"     column="college"     />
+        <result property="courseName"  column="course_name" />
+        <result property="isRequired"  column="is_required" />
+        <result property="createBy"    column="create_by"   />
+        <result property="createTime"  column="create_time" />
+        <result property="updateBy"    column="update_by"   />
+        <result property="updateTime"  column="update_time" />
+        <result property="remark"      column="remark"      />
+    </resultMap>
+
+    <sql id="selectBookTextbookVo">
+        select t.book_id, t.store_id, t.major, t.term, t.college, t.course_name,
+               t.is_required, t.create_by, t.create_time, t.update_by, t.update_time, t.remark
+        from biz_book_textbook t
+    </sql>
+
+    <select id="selectBookTextbookList" parameterType="BookTextbook" resultMap="BookTextbookResult">
+        <include refid="selectBookTextbookVo"/>
+        <where>
+            <if test="bookId != null">
+                and t.book_id = #{bookId}
+            </if>
+            <if test="major != null and major != ''">
+                and t.major = #{major}
+            </if>
+            <if test="term != null and term != ''">
+                and t.term = #{term}
+            </if>
+            <if test="college != null and college != ''">
+                and t.college = #{college}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.book_id desc
+    </select>
+</mapper>

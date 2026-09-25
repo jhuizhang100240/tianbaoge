@@ -20,9 +20,9 @@ public interface DailySettlementMapper extends BaseMapper<DailySettlement>
     /**
      * 给窗口内的订单挂上日结单号（生成时调用一次）。
      *
-     * <p>⚠️ {@code biz_order} **没有任何班次列**（实测确认），故窗口只能落在
-     * {@code begin} ~ {@code end} 之内；{@code begin}/{@code end} 由 service 按班次实际
-     * 开交班时间算（见 {@link #aggregate} 的参数说明）。
+     * <p>⚠️ {@code biz_order} **没有任何班次列**（实测确认），故窗口只能落在时间区间内。
+     * <b>边界由调用方按应用侧时间传入</b>（不能用库的 {@code now()}：库是 UTC、应用是 +08，
+     * 差 8 小时会让窗口恒为空，详见 docs/db/10_timezone_plus0800.sql）。
      *
      * @return 本次挂上的订单数
      */

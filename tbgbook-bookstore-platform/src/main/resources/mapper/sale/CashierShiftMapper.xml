@@ -86,7 +86,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by s.shift_id desc
     </select>
 
-    <!-- 班次窗口内的收款聚合（交班回填 + 现金差异用） -->
+    <!--
+      班次窗口内的收款聚合（交班回填 + 现金差异用）。
+
+      ⚠️ **边界来自应用侧传入的 begin/end，不能用库的 now()**：
+      本项目 JDBC 带 sessionVariables=time_zone='+08:00'（应用写入是 +08），
+      而 mysql CLI 会话时区是 UTC（now() 差 8 小时）—— 用 now() 会让窗口恒为空。
+      详见 docs/db/10_timezone_plus0800.sql。上界由调用方放宽 1 秒以免同秒漏单。
+    -->
     <select id="aggregateShift" resultType="SettlementAggregate">
         select
           count(distinct o.order_id)                        as order_count,

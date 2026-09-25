@@ -143,6 +143,8 @@ public class DailySettlementServiceImpl extends ServiceImpl<DailySettlementMappe
             throw BizErrors.conflict("「" + date + " " + nzStr(shiftName) + "」的日结单已锁定，不能重新生成");
         }
 
+        // 窗口边界按**应用侧**时间算（不能用库的 now()：库是 UTC、应用是 +08，差 8 小时
+        // 会让窗口恒为空，见 docs/db/10_timezone_plus0800.sql）。上界放宽 1 秒防同秒漏单。
         LocalDateTime begin = windowBegin(date, shift);
         LocalDateTime end = windowEnd(date, shift);
 
@@ -327,7 +329,11 @@ public class DailySettlementServiceImpl extends ServiceImpl<DailySettlementMappe
         return null;
     }
 
-    /** 窗口起：班次已开班用实际开班时间，否则当天 00:00 */
+    /**
+     * 窗口起：班次已开班用实际开班时间，否则当天 00:00。
+     *
+     * <p>⚠️ 用**应用侧**时间（与 JDBC 的 +08 写入同源），不能用库的 {@code now()}。
+     */
     private LocalDateTime windowBegin(LocalDate date, CashierShift shift)
     {
         if (shift != null && shift.getOpenTime() != null)
@@ -337,18 +343,18 @@ public class DailySettlementServiceImpl extends ServiceImpl<DailySettlementMappe
         return date.atStartOfDay();
     }
 
-    /** 窗口止：班次已交班用交班时间，未交班用当刻，否则当天 23:59:59 */
+    /** 窗口止：班次已交班用交班时间，未交班用当刻，否则当天 23:59:59；一律**放宽 1 秒**防同秒漏单 */
     private LocalDateTime windowEnd(LocalDate date, CashierShift shift)
     {
         if (shift != null)
         {
             if (shift.getCloseTime() != null)
             {
-                return shift.getCloseTime();
+                return shift.getCloseTime().plusSeconds(1);
             }
             if (shift.getOpenTime() != null)
             {
-                return LocalDateTime.now();
+                return LocalDateTime.now().plusSeconds(1);
             }
         }
         return date.atTime(LocalTime.MAX);

@@ -115,8 +115,12 @@ public class CashierShiftServiceImpl extends ServiceImpl<CashierShiftMapper, Cas
             throw BizErrors.conflict("班次「" + shift.getShiftName() + "」已交班，不能重复交班");
         }
 
+        // ⚠️ 边界用**应用侧**时间（与本项目 JDBC 的 +08 写入同源），不用库的 now()：
+        //    库的 now() 是 UTC（差 8 小时），会让窗口恒为空 —— 见 Mapper 注释与
+        //    docs/db/10_timezone_plus0800.sql。上界放宽 1 秒，免得同一秒写入的订单被秒精度漏掉。
         LocalDateTime closeTime = LocalDateTime.now();
-        SettlementAggregate agg = baseMapper.aggregateShift(shift.getOpenTime(), closeTime);
+        SettlementAggregate agg = baseMapper.aggregateShift(
+                shift.getOpenTime(), closeTime.plusSeconds(1));
         BigDecimal cash = (agg == null) ? BigDecimal.ZERO : nz(agg.getCashAmount());
         BigDecimal closeAmount = nz(request.getCloseAmount());
         BigDecimal cashDiff = closeAmount.subtract(cash).setScale(SCALE, RoundingMode.HALF_UP);

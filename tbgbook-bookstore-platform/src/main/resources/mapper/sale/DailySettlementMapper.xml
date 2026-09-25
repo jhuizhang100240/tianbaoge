@@ -101,6 +101,58 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <!--
       给窗口内的订单挂上日结单号（生成时调用）。
+
+      ⚠️ **边界由调用方按应用侧时间传入**，不能用库的 now()：本项目 JDBC 带
+      sessionVariables=time_zone='+08:00'（应用写入 +08），而库的 now() 是 UTC（差 8 小时）
+      —— 用 now() 会让窗口恒为空（本会话实测）。详见 docs/db/10_timezone_plus0800.sql。
+
+      只挂 status <> 5（未取消）且尚未挂过日结单（settle_id = 0）的订单 ——
+      重复生成时不许把别的日结单的订单抢过来。
+    -->
+    <update id="attachOrders">
+        update biz_order
+        set settle_id = #{settleId}, update_time = now()
+        where store_id = #{storeId}
+          and status &lt;&gt; 5
+          and settle_id = 0
+          and create_time &gt;= #{begin}
+          and create_time &lt;= #{end}
+    </update>
+
+    <!--
+      一次 SQL 出全部汇总列。
+
+      **窗口口径（本次自定，见 A31）**：用「该日结单下的订单」而不是「按时间窗重新捞一遍」——
+      `biz_order.settle_id` 是本表自己的外键（表结构本来就有），生成时把窗口内的订单挂上，
+      之后无论订单的 create_time 被谁改过，聚合的始终是**同一批订单**。
+      按时间窗重捞有个隐患：红冲会生成一张 create_time 为「现在」的反向单，
+      它落在别的窗口里，会让那天的账面凭空少一块。
+
+      收款按 biz_payment 聚合（支付方式分项本来就在这张表上）；
+      退款也取自 biz_payment.refund_amount —— 微信/支付宝的原路退回在这里，
+      储值回退不在（它落在 biz_stored_value_log），故 stored_amount 是**扣减退款后的净额**。
+      只统计 status <> 5（未取消）的订单：取消单没收到钱。
+    -->
+    <select id="aggregate" resultType="SettlementAggregate">
+        select
+          count(distinct o.order_id)                        as order_count,
+          ifnull(sum(o.pay_amount), 0)                      as total_amount,
+          ifnull(sum(case when p.pay_method = 1 then p.pay_amount else 0 end), 0) as cash_amount,
+          ifnull(sum(case when p.pay_method = 2 then p.pay_amount else 0 end), 0) as wechat_amount,
+          ifnull(sum(case when p.pay_method = 3 then p.pay_amount else 0 end), 0) as alipay_amount,
+          ifnull(sum(case when p.pay_method = 4 then p.pay_amount - ifnull(p.refund_amount, 0)
+                          else 0 end), 0)                    as stored_amount,
+          ifnull(sum(case when p.pay_method = 5 then p.pay_amount else 0 end), 0) as campus_amount,
+          ifnull(sum(ifnull(p.refund_amount, 0)), 0)         as refund_amount,
+          ifnull(sum(o.point_amount), 0)                     as point_amount
+        from biz_order o
+        left join biz_payment p on p.order_id = o.order_id
+        where o.settle_id = #{settleId}
+          and o.status &lt;&gt; 5
+    </select>
+
+    <!--
+      给窗口内的订单挂上日结单号（生成时调用）。
       ⚠️ **`biz_order` 没有任何班次列**（实测 information_schema 确认）—— 班次与订单的对应关系
       只能靠「时间窗落在该班次的起止之内」来表达，不像日结单自己还有 `shift` 文本列可匹配。
       故窗口取**班次的实际开交班时间**（`open_time` ~ `close_time`；未交班时用「now()」封口）：

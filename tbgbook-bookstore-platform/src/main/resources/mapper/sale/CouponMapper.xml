@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员优惠券实例 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的；不写 SELECT *；一律 #{}
+  ⚠️ biz_coupon **没有 del_flag**（券一旦发出就是记录，删除是物理删，且只允许删未使用的）——
+     故查询里没有 `del_flag = '0'`。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.CouponMapper">
+
+    <resultMap type="Coupon" id="CouponResult">
+        <result property="couponId"        column="coupon_id"        />
+        <result property="storeId"         column="store_id"         />
+        <result property="couponCode"      column="coupon_code"      />
+        <result property="templateId"      column="template_id"      />
+        <result property="couponName"      column="coupon_name"      />
+        <result property="memberId"        column="member_id"        />
+        <result property="faceValue"       column="face_value"       />
+        <result property="thresholdAmount" column="threshold_amount" />
+        <result property="validStart"      column="valid_start"      />
+        <result property="validEnd"        column="valid_end"        />
+        <result property="status"          column="status"           />
+        <result property="useOrderId"      column="use_order_id"     />
+        <result property="useTime"         column="use_time"         />
+        <result property="grantBatchId"    column="grant_batch_id"   />
+        <result property="receiveTime"     column="receive_time"     />
+        <result property="createTime"      column="create_time"      />
+    </resultMap>
+
+    <sql id="cols">
+        c.coupon_id, c.store_id, c.coupon_code, c.template_id, c.coupon_name, c.member_id,
+        c.face_value, c.threshold_amount, c.valid_start, c.valid_end, c.status,
+        c.use_order_id, c.use_time, c.grant_batch_id, c.receive_time, c.create_time
+    </sql>
+
+    <select id="selectCouponList" parameterType="Coupon" resultMap="CouponResult">
+        select <include refid="cols" />
+        from biz_coupon c
+        <where>
+            <if test="couponCode != null and couponCode != ''">
+                and c.coupon_code = #{couponCode}
+            </if>
+            <if test="memberId != null">
+                and c.member_id = #{memberId}
+            </if>
+            <if test="templateId != null">
+                and c.template_id = #{templateId}
+            </if>
+            <if test="status != null">
+                and c.status = #{status}
+            </if>
+            <if test="grantBatchId != null">
+                and c.grant_batch_id = #{grantBatchId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and c.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and c.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by c.coupon_id desc
+    </select>
+
+    <select id="selectNextCouponId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_coupon'
+    </select>
+
+    <!-- 每人限领校验：只算「未使用且未过期」的（用掉/过期的不该继续占额度） -->
+    <select id="countUsableByMemberAndTemplate" resultType="int">
+        select count(*) from biz_coupon
+        where member_id = #{memberId}
+          and template_id = #{templateId}
+          and status = 1
+          and (valid_end is null or valid_end &gt;= now())
+    </select>
+
+    <!-- 惰性过期：把已过失效时间但状态仍是 1未使用 的券刷成 3已过期 -->
+    <update id="expireOutdated">
+        update biz_coupon
+        set status = 3
+        where status = 1
+          and valid_end is not null
+          and valid_end &lt; now()
+        <if test="memberId != null">
+            and member_id = #{memberId}
+        </if>
+    </update>
+</mapper>

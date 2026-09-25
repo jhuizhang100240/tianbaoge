@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  导出任务写入（跨域写 biz_export_task，属阶段八的下载中心）
+  ⚠️ biz_export_task 有 store_id（业务表），故写入时带上
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.ExportTaskMapper">
+
+    <insert id="insertTask">
+        insert into biz_export_task (store_id, task_name, export_type, filter_summary, total_rows,
+            progress, status, file_url, file_size, expire_time, is_sensitive, notify_type,
+            create_by, create_time)
+        values (1, #{taskName}, #{exportType}, '', 0, 0, 1, '', 0,
+                date_add(now(), interval 7 day), #{isSensitive}, 1, #{createBy}, now())
+    </insert>
+
+    <select id="selectLastTaskId" resultType="java.lang.Long">
+        select last_insert_id()
+    </select>
+</mapper>

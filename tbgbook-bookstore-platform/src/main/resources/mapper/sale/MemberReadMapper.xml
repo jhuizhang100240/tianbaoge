@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  收银台会员域只读查询（跨域读；只读不写）
+  ⚠️ biz_member 没有 del_flag（注销是 status=4），故查询里不写 del_flag。
+  ⚠️ biz_borrow.status：1在借 2已归还 3已逾期 4已赔偿 —— 「未还」= 1 或 3。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.MemberReadMapper">
+
+    <!-- 手机号 / 会员卡号 / 会员码 三者都当同一个 keyword 精确匹配 -->
+    <select id="selectMemberByKeyword" resultType="MemberBrief">
+        select m.member_id   as memberId,
+               m.member_no   as memberNo,
+               m.phone       as phone,
+               m.nickname    as nickname,
+               m.level_id    as levelId,
+               m.level_name  as levelName,
+               ifnull(l.discount_rate, 1.00) as discountRate,
+               m.points      as points,
+               ifnull(b.total_balance, 0.00) as balanceTotal,
+               m.status      as status
+        from biz_member m
+        left join biz_member_level l on l.level_id = m.level_id
+        left join biz_member_balance b on b.member_id = m.member_id
+        where m.phone = #{keyword}
+           or m.member_no = #{keyword}
+        limit 1
+    </select>
+
+    <!-- 按 ID 取会员简要信息（试算用） -->
+    <select id="selectMemberByKeywordById" resultType="MemberBrief">
+        select m.member_id   as memberId,
+               m.member_no   as memberNo,
+               m.phone       as phone,
+               m.nickname    as nickname,
+               m.level_id    as levelId,
+               m.level_name  as levelName,
+               ifnull(l.discount_rate, 1.00) as discountRate,
+               m.points      as points,
+               ifnull(b.total_balance, 0.00) as balanceTotal,
+               m.status      as status
+        from biz_member m
+        left join biz_member_level l on l.level_id = m.level_id
+        left join biz_member_balance b on b.member_id = m.member_id
+        where m.member_id = #{memberId}
+        limit 1
+    </select>
+
+    <!-- 储值账户本金余额（消费按比例分摊扣减用） -->
+    <select id="selectPrincipalBalance" resultType="java.math.BigDecimal">
+        select ifnull(principal_balance, 0.00) from biz_member_balance where member_id = #{memberId}
+    </select>
+
+    <!-- 当前可用券：未使用 + 未过期（门槛是否够留给试算判，那时才知道金额） -->
+    <select id="selectUsableCoupons" resultType="com.tbgbook.bookstore.sale.domain.Coupon">
+        select c.coupon_id        as couponId,
+               c.coupon_code      as couponCode,
+               c.coupon_name      as couponName,
+               c.face_value       as faceValue,
+               c.threshold_amount as thresholdAmount,
+               c.valid_end        as validEnd
+        from biz_coupon c
+        where c.member_id = #{memberId}
+          and c.status = 1
+          and (c.valid_end is null or c.valid_end &gt;= now())
+        order by c.valid_end asc
+    </select>
+
+    <!-- 在借册数：在借(1) + 已逾期(3) 都算「没还」 -->
+    <select id="countBorrowing" resultType="int">
+        select count(*) from biz_borrow
+        where member_id = #{memberId} and status in (1, 3)
+    </select>
+
+    <select id="countOverdue" resultType="int">
+        select count(*) from biz_borrow
+        where member_id = #{memberId} and status = 3
+    </select>
+</mapper>

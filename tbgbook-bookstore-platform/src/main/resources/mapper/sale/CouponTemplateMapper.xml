@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  优惠券模板 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的；不写 SELECT *；一律 #{}
+  ⚠️ biz_coupon_template **有 del_flag**（基础数据表）—— 自定义 XML 不走 @TableLogic，
+     故列表查询必须自己写 `del_flag = '0'`（与 PublisherMapper 同一处理）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.CouponTemplateMapper">
+
+    <resultMap type="CouponTemplate" id="CouponTemplateResult">
+        <result property="templateId"      column="template_id"      />
+        <result property="storeId"         column="store_id"         />
+        <result property="templateNo"      column="template_no"      />
+        <result property="couponName"      column="coupon_name"      />
+        <result property="couponType"      column="coupon_type"      />
+        <result property="faceValue"       column="face_value"       />
+        <result property="discountRate"    column="discount_rate"    />
+        <result property="thresholdAmount" column="threshold_amount" />
+        <result property="validityType"    column="validity_type"    />
+        <result property="validStart"      column="valid_start"      />
+        <result property="validEnd"        column="valid_end"        />
+        <result property="validDays"       column="valid_days"       />
+        <result property="totalQty"        column="total_qty"        />
+        <result property="issuedQty"       column="issued_qty"       />
+        <result property="receivedQty"     column="received_qty"     />
+        <result property="usedQty"         column="used_qty"         />
+        <result property="perLimit"        column="per_limit"        />
+        <result property="scopeType"       column="scope_type"       />
+        <result property="scopeValue"      column="scope_value"      />
+        <result property="stackable"       column="stackable"        />
+        <result property="entryConfig"     column="entry_config"     />
+        <result property="status"          column="status"           />
+        <result property="delFlag"         column="del_flag"         />
+        <result property="createBy"        column="create_by"        />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateBy"        column="update_by"        />
+        <result property="updateTime"      column="update_time"      />
+        <result property="remark"          column="remark"           />
+    </resultMap>
+
+    <sql id="cols">
+        t.template_id, t.store_id, t.template_no, t.coupon_name, t.coupon_type,
+        t.face_value, t.discount_rate, t.threshold_amount, t.validity_type,
+        t.valid_start, t.valid_end, t.valid_days, t.total_qty, t.issued_qty,
+        t.received_qty, t.used_qty, t.per_limit, t.scope_type, t.scope_value,
+        t.stackable, t.entry_config, t.status, t.del_flag,
+        t.create_by, t.create_time, t.update_by, t.update_time, t.remark
+    </sql>
+
+    <select id="selectCouponTemplateList" parameterType="CouponTemplate" resultMap="CouponTemplateResult">
+        select <include refid="cols" />
+        from biz_coupon_template t
+        <where>
+            t.del_flag = '0'
+            <if test="templateNo != null and templateNo != ''">
+                and t.template_no = #{templateNo}
+            </if>
+            <if test="couponName != null and couponName != ''">
+                and t.coupon_name like concat('%', #{couponName}, '%')
+            </if>
+            <if test="couponType != null">
+                and t.coupon_type = #{couponType}
+            </if>
+            <if test="status != null">
+                and t.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.template_id desc
+    </select>
+
+    <select id="selectNextTemplateId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_coupon_template'
+    </select>
+</mapper>

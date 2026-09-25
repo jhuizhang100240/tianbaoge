@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  销售订单 Mapper XML
+  ⚠️ biz_order 没有 del_flag（订单是业务记录，删除是物理删且只允许删未支付的）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.OrderMapper">
+
+    <resultMap type="Order" id="OrderResult">
+        <result property="orderId"           column="order_id"            />
+        <result property="storeId"           column="store_id"            />
+        <result property="orderNo"           column="order_no"            />
+        <result property="orderType"         column="order_type"          />
+        <result property="memberId"          column="member_id"           />
+        <result property="memberNo"          column="member_no"           />
+        <result property="memberName"        column="member_name"         />
+        <result property="memberLevelId"     column="member_level_id"     />
+        <result property="memberDiscountRate" column="member_discount_rate"/>
+        <result property="bookKind"          column="book_kind"           />
+        <result property="totalQty"          column="total_qty"           />
+        <result property="totalAmount"       column="total_amount"        />
+        <result property="singleDiscount"    column="single_discount"     />
+        <result property="memberDiscount"    column="member_discount"     />
+        <result property="couponAmount"      column="coupon_amount"       />
+        <result property="pointAmount"       column="point_amount"        />
+        <result property="discountTotal"     column="discount_total"      />
+        <result property="payAmount"         column="pay_amount"          />
+        <result property="pointUsed"         column="point_used"          />
+        <result property="pointGain"         column="point_gain"          />
+        <result property="couponId"          column="coupon_id"           />
+        <result property="hasSpecialPrice"   column="has_special_price"   />
+        <result property="needApproval"      column="need_approval"       />
+        <result property="approvalBy"        column="approval_by"         />
+        <result property="approvalTime"      column="approval_time"       />
+        <result property="status"            column="status"              />
+        <result property="payExpireTime"     column="pay_expire_time"     />
+        <result property="payTime"           column="pay_time"            />
+        <result property="pickupCode"        column="pickup_code"         />
+        <result property="pickupTime"        column="pickup_time"         />
+        <result property="pickupBy"          column="pickup_by"           />
+        <result property="finishTime"        column="finish_time"         />
+        <result property="isRed"             column="is_red"              />
+        <result property="redOriginOrderId"  column="red_origin_order_id" />
+        <result property="isSettled"         column="is_settled"          />
+        <result property="settleId"          column="settle_id"           />
+        <result property="holdId"            column="hold_id"             />
+        <result property="cashierBy"         column="cashier_by"          />
+        <result property="createBy"          column="create_by"           />
+        <result property="createTime"        column="create_time"         />
+        <result property="updateBy"          column="update_by"           />
+        <result property="updateTime"        column="update_time"         />
+        <result property="remark"            column="remark"              />
+    </resultMap>
+
+    <select id="selectOrderList" parameterType="Order" resultMap="OrderResult">
+        select o.order_id, o.store_id, o.order_no, o.order_type, o.member_id, o.member_no,
+               o.member_name, o.member_level_id, o.member_discount_rate, o.book_kind,
+               o.total_qty, o.total_amount, o.single_discount, o.member_discount,
+               o.coupon_amount, o.point_amount, o.discount_total, o.pay_amount,
+               o.point_used, o.point_gain, o.coupon_id, o.has_special_price, o.need_approval,
+               o.approval_by, o.approval_time, o.status, o.pay_expire_time, o.pay_time,
+               o.pickup_code, o.pickup_time, o.pickup_by, o.finish_time, o.is_red,
+               o.red_origin_order_id, o.is_settled, o.settle_id, o.hold_id, o.cashier_by,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.remark
+        from biz_order o
+        <where>
+            <if test="orderNo != null and orderNo != ''">
+                and o.order_no = #{orderNo}
+            </if>
+            <if test="orderType != null">
+                and o.order_type = #{orderType}
+            </if>
+            <if test="memberId != null">
+                and o.member_id = #{memberId}
+            </if>
+            <if test="memberNo != null and memberNo != ''">
+                and o.member_no = #{memberNo}
+            </if>
+            <if test="status != null">
+                and o.status = #{status}
+            </if>
+            <if test="pickupCode != null and pickupCode != ''">
+                and o.pickup_code = #{pickupCode}
+            </if>
+            <if test="isRed != null">
+                and o.is_red = #{isRed}
+            </if>
+            <if test="isSettled != null">
+                and o.is_settled = #{isSettled}
+            </if>
+            <if test="cashierBy != null and cashierBy != ''">
+                and o.cashier_by = #{cashierBy}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and o.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and o.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by o.order_id desc
+    </select>
+    <select id="selectNextOrderId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1) from information_schema.tables
+        where table_schema = (select database()) and table_name = 'biz_order'
+    </select>
+</mapper>

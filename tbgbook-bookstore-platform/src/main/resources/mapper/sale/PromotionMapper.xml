@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  促销活动 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 预取主键 + 冲突查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_promotion **有 del_flag**（基础数据表，走 @TableLogic）——
+     自定义 XML **不走** @TableLogic，故列表查询里必须自己写 `del_flag = '0'`，
+     漏了就会把已删的活动也列出来（与 PublisherMapper 同一处理）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.PromotionMapper">
+
+    <resultMap type="Promotion" id="PromotionResult">
+        <result property="promotionId"     column="promotion_id"     />
+        <result property="storeId"         column="store_id"         />
+        <result property="promotionNo"     column="promotion_no"     />
+        <result property="promotionName"   column="promotion_name"   />
+        <result property="promotionType"   column="promotion_type"   />
+        <result property="discountRate"    column="discount_rate"    />
+        <result property="thresholdAmount" column="threshold_amount" />
+        <result property="reduceAmount"    column="reduce_amount"    />
+        <result property="giftDesc"        column="gift_desc"        />
+        <result property="scopeType"       column="scope_type"       />
+        <result property="scopeValue"      column="scope_value"      />
+        <result property="memberLevelIds"  column="member_level_ids" />
+        <result property="isSpecialPrice"  column="is_special_price" />
+        <result property="priority"        column="priority"         />
+        <result property="startTime"       column="start_time"       />
+        <result property="endTime"         column="end_time"         />
+        <result property="status"          column="status"           />
+        <result property="delFlag"         column="del_flag"         />
+        <result property="activityPrice"   column="activity_price"   />
+        <result property="limitQty"        column="limit_qty"        />
+        <result property="createBy"        column="create_by"        />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateBy"        column="update_by"        />
+        <result property="updateTime"      column="update_time"      />
+        <result property="remark"          column="remark"           />
+    </resultMap>
+
+    <sql id="cols">
+        p.promotion_id, p.store_id, p.promotion_no, p.promotion_name, p.promotion_type,
+        p.discount_rate, p.threshold_amount, p.reduce_amount, p.gift_desc,
+        p.scope_type, p.scope_value, p.member_level_ids, p.is_special_price,
+        p.priority, p.start_time, p.end_time, p.status, p.del_flag,
+        p.create_by, p.create_time, p.update_by, p.update_time, p.remark
+    </sql>
+
+    <select id="selectPromotionList" parameterType="Promotion" resultMap="PromotionResult">
+        select <include refid="cols" />
+        from biz_promotion p
+        <where>
+            p.del_flag = '0'
+            <if test="promotionNo != null and promotionNo != ''">
+                and p.promotion_no = #{promotionNo}
+            </if>
+            <if test="promotionName != null and promotionName != ''">
+                and p.promotion_name like concat('%', #{promotionName}, '%')
+            </if>
+            <if test="promotionType != null">
+                and p.promotion_type = #{promotionType}
+            </if>
+            <if test="scopeType != null">
+                and p.scope_type = #{scopeType}
+            </if>
+            <if test="status != null">
+                and p.status = #{status}
+            </if>
+            <if test="isSpecialPrice != null">
+                and p.is_special_price = #{isSpecialPrice}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and p.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and p.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by p.priority desc, p.promotion_id desc
+    </select>
+
+    <!--
+      按图书查**此刻生效且覆盖它**的活动（试算按行定价用）。
+      覆盖判定：全场 / 范围含该分类 / 范围含该图书 / 该图书在活动明细里有行。
+      按 priority 倒序 —— 命中多个时调用方取第一条（契约：取一、不相加）。
+    -->
+    <select id="selectActiveForBook" resultMap="PromotionResult">
+        select <include refid="cols" />,
+               pb.activity_price as activity_price,
+               pb.limit_qty      as limit_qty
+        from biz_promotion p
+        left join biz_promotion_book pb
+               on pb.promotion_id = p.promotion_id and pb.book_id = #{bookId}
+        where p.del_flag = '0'
+          and p.status = 2
+          and (p.start_time is null or p.start_time &lt;= #{nowTime})
+          and (p.end_time   is null or p.end_time   &gt;= #{nowTime})
+          and (
+                p.scope_type = 1
+             or (p.scope_type = 2 and (p.scope_value = #{categoryId}
+                                       or find_in_set(#{categoryId}, p.scope_value)))
+             or (p.scope_type = 3 and (p.scope_value = #{bookId}
+                                       or find_in_set(#{bookId}, p.scope_value)))
+             or pb.rel_id is not null
+          )
+        order by p.priority desc, p.promotion_id desc
+    </select>
+
+    <!-- 预取下一个自增主键：promotion_no 是 NOT NULL + 唯一索引，插入前必须先给出值 -->
+    <select id="selectNextPromotionId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_promotion'
+    </select>
+
+    <!--
+      与本活动时间区间重叠的**其它进行中**活动（启用时的非阻断告警）。
+      区间相交：a.start <= b.end AND b.start <= a.end；
+      任一端为空视为「无边界」，按重叠处理（没填时间就说不清边界，宁可报出来）。
+    -->
+    <select id="selectRunningOverlapping" resultMap="PromotionResult">
+        select <include refid="cols" />
+        from biz_promotion p
+        where p.del_flag = '0'
+          and p.status = 2
+          and p.promotion_id &lt;&gt; #{promotionId}
+          and (#{startTime} is null or p.end_time is null or p.end_time &gt;= #{startTime})
+          and (#{endTime} is null or p.start_time is null or p.start_time &lt;= #{endTime})
+        order by p.priority desc, p.promotion_id desc
+        limit 10
+    </select>
+</mapper>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  收银员班次 Mapper XML
+  ⚠️ 班次与订单**没有外键**：`biz_order` 没有任何班次列（实测确认），
+     只能按时间窗（openTime ~ closeTime）圈定本班次的订单。班次跨零点时窗口自然跟着跨。
+  ⚠️ 不写 SELECT *；一律 #{}
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.CashierShiftMapper">
+
+    <resultMap type="CashierShift" id="CashierShiftResult">
+        <result property="shiftId"     column="shift_id"     />
+        <result property="storeId"     column="store_id"     />
+        <result property="shiftDate"   column="shift_date"   />
+        <result property="shiftCode"   column="shift_code"   />
+        <result property="shiftName"   column="shift_name"   />
+        <result property="userId"      column="user_id"      />
+        <result property="userName"    column="user_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="openAmount"  column="open_amount"  />
+        <result property="closeAmount" column="close_amount" />
+        <result property="orderCount"  column="order_count"  />
+        <result property="totalAmount" column="total_amount" />
+        <result property="settleId"    column="settle_id"    />
+        <result property="status"      column="status"       />
+        <result property="openTime"    column="open_time"    />
+        <result property="closeTime"   column="close_time"   />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateTime"  column="update_time"  />
+    </resultMap>
+
+    <select id="selectCashierShiftList" parameterType="CashierShift" resultMap="CashierShiftResult">
+        select s.shift_id, s.store_id, s.shift_date, s.shift_code, s.shift_name, s.user_id,
+               s.user_name, s.nick_name, s.open_amount, s.close_amount, s.order_count,
+               s.total_amount, s.settle_id, s.status, s.open_time, s.close_time,
+               s.create_time, s.update_time
+        from biz_cashier_shift s
+        <where>
+            <if test="shiftDate != null">
+                and s.shift_date = #{shiftDate}
+            </if>
+            <if test="shiftCode != null and shiftCode != ''">
+                and s.shift_code = #{shiftCode}
+            </if>
+            <if test="shiftName != null and shiftName != ''">
+                and s.shift_name = #{shiftName}
+            </if>
+            <if test="userId != null">
+                and s.user_id = #{userId}
+            </if>
+            <if test="userName != null and userName != ''">
+                and s.user_name = #{userName}
+            </if>
+            <if test="status != null">
+                and s.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and s.shift_date &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and s.shift_date &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by s.shift_id desc
+    </select>
+
+    <select id="selectByUserDateCode" resultMap="CashierShiftResult">
+        select s.shift_id, s.store_id, s.shift_date, s.shift_code, s.shift_name, s.user_id,
+               s.user_name, s.nick_name, s.open_amount, s.close_amount, s.order_count,
+               s.total_amount, s.settle_id, s.status, s.open_time, s.close_time,
+               s.create_time, s.update_time
+        from biz_cashier_shift s
+        where s.user_id = #{userId} and s.shift_date = #{shiftDate} and s.shift_code = #{shiftCode}
+        limit 1
+    </select>
+
+    <select id="selectOpenByUser" resultMap="CashierShiftResult">
+        select s.shift_id, s.store_id, s.shift_date, s.shift_code, s.shift_name, s.user_id,
+               s.user_name, s.nick_name, s.open_amount, s.close_amount, s.order_count,
+               s.total_amount, s.settle_id, s.status, s.open_time, s.close_time,
+               s.create_time, s.update_time
+        from biz_cashier_shift s
+        where s.user_id = #{userId} and s.status = 1
+        order by s.shift_id desc
+    </select>
+
+    <!-- 班次窗口内的收款聚合（交班回填 + 现金差异用） -->
+    <select id="aggregateShift" resultType="SettlementAggregate">
+        select
+          count(distinct o.order_id)                        as order_count,
+          ifnull(sum(o.pay_amount), 0)                      as total_amount,
+          ifnull(sum(case when p.pay_method = 1 then p.pay_amount else 0 end), 0) as cash_amount,
+          ifnull(sum(case when p.pay_method = 2 then p.pay_amount else 0 end), 0) as wechat_amount,
+          ifnull(sum(case when p.pay_method = 3 then p.pay_amount else 0 end), 0) as alipay_amount,
+          ifnull(sum(case when p.pay_method = 4 then p.pay_amount - ifnull(p.refund_amount, 0)
+                          else 0 end), 0)                    as stored_amount,
+          ifnull(sum(case when p.pay_method = 5 then p.pay_amount else 0 end), 0) as campus_amount,
+          ifnull(sum(ifnull(p.refund_amount, 0)), 0)         as refund_amount,
+          ifnull(sum(o.point_amount), 0)                     as point_amount
+        from biz_order o
+        left join biz_payment p on p.order_id = o.order_id
+        where o.status &lt;&gt; 5
+          and o.create_time &gt;= #{begin}
+          and o.create_time &lt;= #{end}
+    </select>
+</mapper>

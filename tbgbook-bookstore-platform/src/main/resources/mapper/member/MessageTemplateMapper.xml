@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  消息模板 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MessageTemplateMapper">
+
+    <resultMap type="MessageTemplate" id="MessageTemplateResult">
+        <result property="templateId"   column="template_id"   />
+        <result property="storeId"      column="store_id"      />
+        <result property="templateCode" column="template_code" />
+        <result property="templateName" column="template_name" />
+        <result property="msgType"      column="msg_type"      />
+        <result property="wxTemplateId" column="wx_template_id" />
+        <result property="contentTpl"   column="content_tpl"   />
+        <result property="status"       column="status"        />
+        <result property="delFlag"      column="del_flag"      />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateBy"     column="update_by"     />
+        <result property="updateTime"   column="update_time"   />
+        <result property="remark"       column="remark"        />
+    </resultMap>
+
+    <sql id="selectMessageTemplateVo">
+        select t.template_id, t.store_id, t.template_code, t.template_name, t.msg_type,
+               t.wx_template_id, t.content_tpl, t.status, t.del_flag, t.create_by,
+               t.create_time, t.update_by, t.update_time, t.remark
+        from biz_message_template t
+    </sql>
+
+    <select id="selectMessageTemplateList" parameterType="MessageTemplate" resultMap="MessageTemplateResult">
+        <include refid="selectMessageTemplateVo"/>
+        <where>
+            t.del_flag = '0'
+            <if test="templateCode != null and templateCode != ''">
+                and t.template_code = #{templateCode}
+            </if>
+            <if test="templateName != null and templateName != ''">
+                and t.template_name like concat('%', #{templateName}, '%')
+            </if>
+            <if test="msgType != null">
+                and t.msg_type = #{msgType}
+            </if>
+            <if test="status != null and status != ''">
+                and t.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.template_id desc
+    </select>
+</mapper>

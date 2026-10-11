@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  订阅消息授权记录 Mapper XML（只读资源；发送动作会扣减次数）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.SubscribeAuthMapper">
+
+    <resultMap type="SubscribeAuth" id="SubscribeAuthResult">
+        <result property="authId"       column="auth_id"       />
+        <result property="memberId"     column="member_id"     />
+        <result property="templateCode" column="template_code" />
+        <result property="authStatus"   column="auth_status"   />
+        <result property="authTimes"    column="auth_times"    />
+        <result property="usedTimes"    column="used_times"    />
+        <result property="authTime"     column="auth_time"     />
+        <result property="expireTime"   column="expire_time"   />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+    </resultMap>
+
+    <sql id="selectSubscribeAuthVo">
+        select a.auth_id, a.member_id, a.template_code, a.auth_status, a.auth_times,
+               a.used_times, a.auth_time, a.expire_time, a.create_time, a.update_time
+        from biz_subscribe_auth a
+    </sql>
+
+    <select id="selectSubscribeAuthList" parameterType="SubscribeAuth" resultMap="SubscribeAuthResult">
+        <include refid="selectSubscribeAuthVo"/>
+        <where>
+            <if test="memberId != null">
+                and a.member_id = #{memberId}
+            </if>
+            <if test="templateCode != null and templateCode != ''">
+                and a.template_code = #{templateCode}
+            </if>
+            <if test="authStatus != null">
+                and a.auth_status = #{authStatus}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and a.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and a.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by a.auth_id desc
+    </select>
+
+    <select id="selectUsableMemberIds" resultType="java.lang.Long">
+        select distinct a.member_id
+        from biz_subscribe_auth a
+        where a.auth_status = 1
+          and a.used_times &lt; a.auth_times
+          and (a.expire_time is null or a.expire_time &gt;= #{now})
+          <if test="templateCode != null and templateCode != ''">
+              and a.template_code = #{templateCode}
+          </if>
+    </select>
+
+    <select id="selectUsableAuth" resultMap="SubscribeAuthResult">
+        <include refid="selectSubscribeAuthVo"/>
+        where a.member_id = #{memberId}
+          and a.template_code = #{templateCode}
+          and a.auth_status = 1
+          and a.used_times &lt; a.auth_times
+          and (a.expire_time is null or a.expire_time &gt;= #{now})
+        order by a.auth_id desc
+        limit 1
+    </select>
+
+    <!--
+      条件扣减：剩余可用才扣；扣满上限置 3已用完。
+      ⚠️ 先算 auth_status 再自增 used_times —— 赋值从左到右，后写的表达式会看到新值。
+    -->
+    <update id="consumeAuth">
+        update biz_subscribe_auth
+        set auth_status = if(used_times + 1 &gt;= auth_times, 3, auth_status),
+            used_times = used_times + 1,
+            update_time = now()
+        where auth_id = #{authId}
+          and auth_status = 1
+          and used_times &lt; auth_times
+    </update>
+</mapper>

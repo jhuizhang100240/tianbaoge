@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员消息 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberMessageMapper">
+
+    <resultMap type="MemberMessage" id="MemberMessageResult">
+        <result property="messageId"   column="message_id"   />
+        <result property="storeId"     column="store_id"     />
+        <result property="memberId"    column="member_id"    />
+        <result property="msgType"     column="msg_type"     />
+        <result property="title"       column="title"        />
+        <result property="content"     column="content"      />
+        <result property="linkUrl"     column="link_url"     />
+        <result property="bizNo"       column="biz_no"       />
+        <result property="sendChannel" column="send_channel" />
+        <result property="sendStatus"  column="send_status"  />
+        <result property="failReason"  column="fail_reason"  />
+        <result property="sendTime"    column="send_time"    />
+        <result property="isRead"      column="is_read"      />
+        <result property="readTime"    column="read_time"    />
+        <result property="createTime"  column="create_time"  />
+    </resultMap>
+
+    <sql id="selectMemberMessageVo">
+        select m.message_id, m.store_id, m.member_id, m.msg_type, m.title, m.content,
+               m.link_url, m.biz_no, m.send_channel, m.send_status, m.fail_reason,
+               m.send_time, m.is_read, m.read_time, m.create_time
+        from biz_message m
+    </sql>
+
+    <select id="selectMemberMessageList" parameterType="MemberMessage" resultMap="MemberMessageResult">
+        <include refid="selectMemberMessageVo"/>
+        <where>
+            <if test="memberId != null">
+                and m.member_id = #{memberId}
+            </if>
+            <if test="msgType != null">
+                and m.msg_type = #{msgType}
+            </if>
+            <if test="sendChannel != null">
+                and m.send_channel = #{sendChannel}
+            </if>
+            <if test="sendStatus != null">
+                and m.send_status = #{sendStatus}
+            </if>
+            <if test="isRead != null">
+                and m.is_read = #{isRead}
+            </if>
+            <if test="bizNo != null and bizNo != ''">
+                and m.biz_no = #{bizNo}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and m.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and m.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by m.message_id desc
+    </select>
+</mapper>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员标签定义 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 覆盖数原子维护
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberTagMapper">
+
+    <resultMap type="MemberTag" id="MemberTagResult">
+        <result property="tagId"       column="tag_id"       />
+        <result property="storeId"     column="store_id"     />
+        <result property="tagName"     column="tag_name"     />
+        <result property="tagType"     column="tag_type"     />
+        <result property="isRule"      column="is_rule"      />
+        <result property="tagRule"     column="tag_rule"     />
+        <result property="color"       column="color"        />
+        <result property="memberCount" column="member_count" />
+        <result property="status"      column="status"       />
+        <result property="delFlag"     column="del_flag"     />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"  column="update_time"  />
+        <result property="remark"      column="remark"       />
+    </resultMap>
+
+    <sql id="selectMemberTagVo">
+        select t.tag_id, t.store_id, t.tag_name, t.tag_type, t.is_rule, t.tag_rule,
+               t.color, t.member_count, t.status, t.del_flag, t.create_by, t.create_time,
+               t.update_by, t.update_time, t.remark
+        from biz_member_tag t
+    </sql>
+
+    <select id="selectMemberTagList" parameterType="MemberTag" resultMap="MemberTagResult">
+        <include refid="selectMemberTagVo"/>
+        <where>
+            t.del_flag = '0'
+            <if test="tagName != null and tagName != ''">
+                and t.tag_name like concat('%', #{tagName}, '%')
+            </if>
+            <if test="tagType != null">
+                and t.tag_type = #{tagType}
+            </if>
+            <if test="isRule != null">
+                and t.is_rule = #{isRule}
+            </if>
+            <if test="status != null and status != ''">
+                and t.status = #{status}
+            </if>
+        </where>
+        order by t.tag_id desc
+    </select>
+
+    <update id="addMemberCount">
+        update biz_member_tag
+        set member_count = greatest(0, member_count + #{delta}),
+            update_time = now()
+        where tag_id = #{tagId} and del_flag = '0'
+    </update>
+
+    <update id="setMemberCount">
+        update biz_member_tag
+        set member_count = #{count},
+            update_time = now()
+        where tag_id = #{tagId} and del_flag = '0'
+    </update>
+</mapper>

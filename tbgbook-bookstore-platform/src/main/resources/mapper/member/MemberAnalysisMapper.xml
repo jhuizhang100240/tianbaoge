@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员全景 / 时间轴 / 画像聚合查询（阶段五步骤③c-3）
+  ⚠️ 只读；一律 #{} 参数化，禁止 ${}（NFR-S6）
+  ⚠️ 时间边界由应用侧传入（A32）；不在 SQL 里用 now() 与库内 datetime 比较
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberAnalysisMapper">
+
+    <!--
+      订单口径：is_red=0（非红冲）且 status in (1,2,3,4,6,7)
+      —— 排除 5已取消；7已红冲（红冲单）与 6已退款保留（金额在 pay_amount 里可能为负，由业务写入）
+    -->
+    <sql id="orderScope">
+        o.member_id = #{memberId}
+        and o.is_red = 0
+        and o.status in (1, 2, 3, 4, 6, 7)
+    </sql>
+
+    <select id="selectConsumeStat" resultType="java.util.Map">
+        select
+            count(*) as orderCount,
+            ifnull(sum(o.pay_amount), 0.00) as totalAmount,
+            ifnull(sum(o.pay_amount - ifnull((
+                select sum(i.cost_price * i.qty) from biz_order_item i
+                where i.order_id = o.order_id
+            ), 0.00)), 0.00) as grossMargin,
+            count(distinct date(o.create_time)) as activeDays,
+            max(o.create_time) as lastOrderTime
+        from biz_order o
+        where <include refid="orderScope"/>
+          and o.create_time &gt;= #{from}
+          and o.create_time &lt;= #{to}
+    </select>
+
+    <select id="selectCategoryPreference" resultType="java.util.Map">
+        select
+            b.category_id as categoryId,
+            ifnull(c.category_name, '未分类') as categoryName,
+            sum(i.share_amount) as amount
+        from biz_order o
+        join biz_order_item i on i.order_id = o.order_id
+        left join biz_book b on b.book_id = i.book_id
+        left join biz_category c on c.category_id = b.category_id
+        where <include refid="orderScope"/>
+          and o.create_time &gt;= #{from}
+          and o.create_time &lt;= #{to}
+        group by b.category_id, c.category_name
+        order by amount desc
+    </select>
+
+    <select id="selectActivePeriods" resultType="java.util.Map">
+        select
+            case
+                when hour(o.create_time) &lt; 6 then '凌晨'
+                when hour(o.create_time) &lt; 12 then '上午'
+                when hour(o.create_time) &lt; 18 then '下午'
+                else '晚间'
+            end as period,
+            count(*) as cnt
+        from biz_order o
+        where <include refid="orderScope"/>
+          and o.create_time &gt;= #{from}
+          and o.create_time &lt;= #{to}
+        group by period
+    </select>
+
+    <select id="selectOrderAmounts" resultType="java.math.BigDecimal">
+        select o.pay_amount
+        from biz_order o
+        where <include refid="orderScope"/>
+          and o.create_time &gt;= #{from}
+          and o.create_time &lt;= #{to}
+    </select>
+
+    <!--
+      RFM 样本：窗口内有已完成订单的会员。
+      recencyDays 用参数传入的应用侧 now 计算，避免库时区差（A32）
+    -->
+    <select id="selectRfmSamples" resultType="java.util.Map">
+        select
+            o.member_id as memberId,
+            timestampdiff(day, max(o.create_time), #{now}) as recencyDays,
+            count(*) as orderCount,
+            ifnull(sum(o.pay_amount), 0.00) as monetary
+        from biz_order o
+        where o.is_red = 0
+          and o.status in (1, 2, 3, 4, 6, 7)
+          and o.member_id &gt; 0
+          and o.create_time &gt;= #{from}
+          and o.create_time &lt;= #{to}
+        group by o.member_id
+    </select>
+
+    <select id="selectBorrowStat" resultType="java.util.Map">
+        select
+            sum(case when status in (1, 3) then 1 else 0 end) as borrowing,
+            sum(case when status = 3 then 1 else 0 end) as overdue,
+            count(*) as total
+        from biz_borrow
+        where member_id = #{memberId}
+    </select>
+
+    <select id="selectExpiringPoints" resultType="java.lang.Integer">
+        select ifnull(sum(remain_points), 0)
+        from biz_point_batch
+        where member_id = #{memberId}
+          and status = 1
+          and remain_points &gt; 0
+          and expire_time is not null
+          and expire_time &gt; #{from}
+          and expire_time &lt;= #{to}
+    </select>
+
+    <!--
+      时间轴四段 UNION ALL。typesCsv 为空 = 不过滤。
+      ⚠️ order 段带 is_red=0 + status in (1,2,3,4,6,7)，与订单口径一致
+    -->
+    <sql id="timelineUnion">
+        select 'order' as type, o.order_no as bizNo,
+               concat('订单 ', o.order_no, '（', o.total_qty, ' 件）') as title,
+               o.pay_amount as amount, o.create_time as time,
+               concat('/sales/order/', o.order_id) as linkUrl
+        from biz_order o
+        where o.member_id = #{memberId}
+          and o.is_red = 0
+          and o.status in (1, 2, 3, 4, 6, 7)
+        <if test="typesCsv != null and typesCsv != ''">
+          and find_in_set('order', #{typesCsv})
+        </if>
+        union all
+        select 'borrow' as type, v.borrow_no as bizNo,
+               concat('借阅《', v.title, '》') as title,
+               v.deposit_amount as amount, v.borrow_time as time,
+               concat('/borrow/borrow/', v.borrow_id) as linkUrl
+        from biz_borrow v
+        where v.member_id = #{memberId}
+        <if test="typesCsv != null and typesCsv != ''">
+          and find_in_set('borrow', #{typesCsv})
+        </if>
+        union all
+        select 'point' as type, p.ref_no as bizNo,
+               case p.change_type
+                   when 1 then '消费获得积分'
+                   when 2 then '积分抵扣消费'
+                   when 3 then '积分到期清零'
+                   else '积分人工调整'
+               end as title,
+               p.points_change / 100 as amount, p.create_time as time,
+               '' as linkUrl
+        from biz_point_log p
+        where p.member_id = #{memberId}
+        <if test="typesCsv != null and typesCsv != ''">
+          and find_in_set('point', #{typesCsv})
+        </if>
+        union all
+        select 'stored' as type, s.ref_no as bizNo,
+               case s.amount_type
+                   when 1 then '储值充值（本金）'
+                   when 2 then '储值充值（赠送金）'
+                   when 3 then '储值消费（本金）'
+                   when 4 then '储值消费（赠送金）'
+                   when 5 then '储值退款（本金）'
+                   when 6 then '储值退款（赠送金）'
+                   else '储值变动'
+               end as title,
+               s.change_amount as amount, s.create_time as time,
+               '' as linkUrl
+        from biz_stored_value_log s
+        where s.member_id = #{memberId}
+        <if test="typesCsv != null and typesCsv != ''">
+          and find_in_set('stored', #{typesCsv})
+        </if>
+    </sql>
+
+    <select id="countTimeline" resultType="java.lang.Long">
+        select count(*) from (
+            <include refid="timelineUnion"/>
+        ) t
+    </select>
+
+    <select id="selectTimeline"
+            resultType="com.tbgbook.bookstore.member.domain.aggregate.MemberTimelineEntry">
+        select * from (
+            <include refid="timelineUnion"/>
+        ) t
+        order by t.time desc, t.bizNo desc
+        limit #{limit} offset #{offset}
+    </select>
+</mapper>

@@ -11,12 +11,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.member.domain.Member;
 import com.tbgbook.bookstore.member.domain.CancelRequest;
 import com.tbgbook.bookstore.member.domain.FreezeRequest;
 import com.tbgbook.bookstore.member.domain.UnfreezeRequest;
+import com.tbgbook.bookstore.member.service.IMemberAnalysisService;
 import com.tbgbook.bookstore.member.service.IMemberFreezeService;
 import com.tbgbook.bookstore.member.service.IMemberService;
 import com.tbgbook.common.annotation.Log;
@@ -43,6 +45,8 @@ public class MemberController extends BaseController
 
     private final IMemberFreezeService memberFreezeService;
 
+    private final IMemberAnalysisService memberAnalysisService;
+
     /**
      * 查询会员列表（可按卡号 / 手机号 / 昵称 / 姓名 / 等级 / 认证状态 / 状态 / 来源与建档时间区间筛选；
      * 手机号脱敏返回）。
@@ -64,6 +68,41 @@ public class MemberController extends BaseController
     public AjaxResult getInfo(@PathVariable("memberId") Long memberId)
     {
         return success(memberService.selectMemberById(memberId));
+    }
+
+    /**
+     * 会员全景详情（A-45）：档案 + 画像摘要 + 标签 + 等级进度 + 储值券包一次聚合。
+     */
+    @PreAuthorize("@ss.hasPermi('member:member:list')")
+    @GetMapping("/{memberId}/profile")
+    public AjaxResult profile(@PathVariable("memberId") Long memberId)
+    {
+        return success(memberAnalysisService.panorama(memberId));
+    }
+
+    /**
+     * 会员统一时间轴（消费 + 借阅 + 积分 + 储值变动，倒序分页）。
+     *
+     * @param types 记录类型过滤，逗号分隔（order/borrow/point/stored），默认全部
+     */
+    @PreAuthorize("@ss.hasPermi('member:member:list')")
+    @GetMapping("/{memberId}/timeline")
+    public AjaxResult timeline(@PathVariable("memberId") Long memberId,
+            @RequestParam(value = "types", required = false) String types,
+            @RequestParam(value = "pageNum", defaultValue = "1") int pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") int pageSize)
+    {
+        return success(memberAnalysisService.timeline(memberId, types, pageNum, pageSize));
+    }
+
+    /**
+     * 会员画像（近 12 个月窗口；成本口径指标需 `member:cost:view`）。
+     */
+    @PreAuthorize("@ss.hasPermi('member:member:list')")
+    @GetMapping("/{memberId}/portrait")
+    public AjaxResult portrait(@PathVariable("memberId") Long memberId)
+    {
+        return success(memberAnalysisService.portrait(memberId));
     }
 
     /**

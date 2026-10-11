@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -227,6 +228,111 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     public int addConsume(Long memberId, BigDecimal amount)
     {
         return baseMapper.addConsume(memberId, amount == null ? BigDecimal.ZERO : amount);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>注销校验与匿名化（§4.4 规则 4、2026-09-21 澄清的匿名化范围）：
+     * ① 无未还借阅（`biz_borrow.status in (1,3)`）；
+     * ② 无在借押金余额；③ 无待结算订单（未日结且未取消/退款）；
+     * ④ 无处理中的回收单。通过后：手机号/昵称/姓名/头像/生日覆写，标签关系解除并维护覆盖数，
+     * 学号与证件照片清空，置 status=4 / cancelTime / anonymized=1；memberNo 保留。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int cancelMember(Long memberId, String reason)
+    {
+        if (memberId == null)
+        {
+            throw BizErrors.badRequest("会员ID不能为空");
+        }
+        if (reason == null || reason.isBlank())
+        {
+            throw BizErrors.ruleViolated("注销原因未填");
+        }
+        Member existing = referenceGuard.requireExists(baseMapper, memberId, "会员");
+        if (Integer.valueOf(STATUS_CANCELLED).equals(existing.getStatus()))
+        {
+            throw BizErrors.conflict("会员已注销，不能重复注销");
+        }
+
+        // ① 未还借阅（1在借 / 3已逾期）
+        Integer borrows = jdbcTemplate.queryForObject(
+                "select count(*) from biz_borrow where member_id = ? and status in (1,3)",
+                Integer.class, memberId);
+        if (borrows != null && borrows > 0)
+        {
+            throw BizErrors.ruleViolated("会员有未还借阅（" + borrows + " 册），不能注销");
+        }
+        // ② 在借押金余额
+        if (existing.getDepositBalance() != null && existing.getDepositBalance().signum() > 0)
+        {
+            throw BizErrors.ruleViolated("会员仍有在借押金余额 " + existing.getDepositBalance()
+                    + " 元，不能注销");
+        }
+        // ②b 储值余额不为 0（不可提现，需先消费/退款处理完毕）
+        BigDecimal storedBalance = nzAmount(existing.getBalancePrincipal())
+                .add(nzAmount(existing.getBalanceGift()));
+        if (storedBalance.signum() > 0)
+        {
+            throw BizErrors.ruleViolated("会员储值余额不为 0（当前 " + storedBalance
+                    + " 元），不能注销；请先消费或走储值退款");
+        }
+        // ③ 待结算订单（未取消/未退款，且未日结）
+        Integer orders = jdbcTemplate.queryForObject(
+                "select count(*) from biz_order where member_id = ? and status not in (5,7) "
+                        + "and (is_settled is null or is_settled = 0)",
+                Integer.class, memberId);
+        if (orders != null && orders > 0)
+        {
+            throw BizErrors.ruleViolated("存在待结算的订单（" + orders + " 单），不能注销");
+        }
+        // ④ 处理中的回收单（1待验收 / 2验收中）
+        Integer recycles = jdbcTemplate.queryForObject(
+                "select count(*) from biz_recycle where member_id = ? and status in (1,2)",
+                Integer.class, memberId);
+        if (recycles != null && recycles > 0)
+        {
+            throw BizErrors.ruleViolated("存在处理中的回收单（" + recycles + " 单），不能注销");
+        }
+
+        // 标签关系解除：先按标签递减覆盖数，再物理删关系
+        List<Map<String, Object>> tagCounts = jdbcTemplate.queryForList(
+                "select tag_id, count(*) as cnt from biz_member_tag_rel "
+                        + "where member_id = ? group by tag_id", memberId);
+        for (Map<String, Object> row : tagCounts)
+        {
+            jdbcTemplate.update(
+                    "update biz_member_tag set member_count = greatest(0, member_count - ?) "
+                            + "where tag_id = ?",
+                    ((Number) row.get("cnt")).intValue(), ((Number) row.get("tag_id")).longValue());
+        }
+        jdbcTemplate.update("delete from biz_member_tag_rel where member_id = ?", memberId);
+        // 学号与证件信息清空（教育信息其余字段按澄清范围保留）
+        jdbcTemplate.update("update biz_member_student set student_no = '', cert_image_url = '', "
+                + "update_time = now() where member_id = ?", memberId);
+
+        // 会员匿名化（memberNo 保留；生日需写 null，故单独走 SQL）
+        LocalDateTime now = LocalDateTime.now();
+        Member patch = new Member();
+        patch.setMemberId(memberId);
+        patch.setPhone("X" + memberId);
+        patch.setNickname("已注销");
+        patch.setRealName("已注销");
+        patch.setAvatar("");
+        patch.setStatus(STATUS_CANCELLED);
+        patch.setCancelTime(now);
+        patch.setAnonymized(1);
+        int rows = baseMapper.updateById(patch);
+        jdbcTemplate.update("update biz_member set birthday = null where member_id = ?", memberId);
+        return rows;
+    }
+
+    /** 金额 null 当 0 处理 */
+    private BigDecimal nzAmount(BigDecimal value)
+    {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /** 手机号去空格并做非空校验（格式由实体注解校验） */

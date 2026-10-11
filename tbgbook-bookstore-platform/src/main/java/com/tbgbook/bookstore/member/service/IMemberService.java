@@ -61,4 +61,14 @@ public interface IMemberService extends IService<Member>
      * @return 影响行数
      */
     int addConsume(Long memberId, BigDecimal amount);
+
+    /**
+     * 注销会员：校验无未结清业务后做匿名化（个人信息覆写、标签关系解除、学号与证件清空），
+     * 保留 memberId / memberNo 与业务流水（§4.4 规则 4）。
+     *
+     * @param memberId 会员ID
+     * @param reason   注销原因（必填）
+     * @return 影响行数
+     */
+    int cancelMember(Long memberId, String reason);
 }

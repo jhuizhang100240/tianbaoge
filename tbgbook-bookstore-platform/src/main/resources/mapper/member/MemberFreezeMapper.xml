@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员冻结与黑名单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberFreezeMapper">
+
+    <resultMap type="MemberFreeze" id="MemberFreezeResult">
+        <result property="freezeId"       column="freeze_id"       />
+        <result property="storeId"        column="store_id"        />
+        <result property="memberId"       column="member_id"       />
+        <result property="freezeType"     column="freeze_type"     />
+        <result property="reason"         column="reason"          />
+        <result property="freezeBy"       column="freeze_by"       />
+        <result property="freezeTime"     column="freeze_time"     />
+        <result property="unfreezeBy"     column="unfreeze_by"     />
+        <result property="unfreezeTime"   column="unfreeze_time"   />
+        <result property="unfreezeReason" column="unfreeze_reason" />
+        <result property="status"         column="status"          />
+        <result property="createTime"     column="create_time"     />
+        <result property="updateTime"     column="update_time"     />
+    </resultMap>
+
+    <sql id="selectMemberFreezeVo">
+        select f.freeze_id, f.store_id, f.member_id, f.freeze_type, f.reason, f.freeze_by,
+               f.freeze_time, f.unfreeze_by, f.unfreeze_time, f.unfreeze_reason, f.status,
+               f.create_time, f.update_time
+        from biz_member_freeze f
+    </sql>
+
+    <select id="selectMemberFreezeList" parameterType="MemberFreeze" resultMap="MemberFreezeResult">
+        <include refid="selectMemberFreezeVo"/>
+        <where>
+            <if test="memberId != null">
+                and f.member_id = #{memberId}
+            </if>
+            <if test="freezeType != null">
+                and f.freeze_type = #{freezeType}
+            </if>
+            <if test="status != null">
+                and f.status = #{status}
+            </if>
+            <if test="freezeBy != null and freezeBy != ''">
+                and f.freeze_by = #{freezeBy}
+            </if>
+        </where>
+        order by f.freeze_id desc
+    </select>
+</mapper>

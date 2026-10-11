@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.member.domain.Member;
+import com.tbgbook.bookstore.member.domain.CancelRequest;
+import com.tbgbook.bookstore.member.domain.FreezeRequest;
+import com.tbgbook.bookstore.member.domain.UnfreezeRequest;
+import com.tbgbook.bookstore.member.service.IMemberFreezeService;
 import com.tbgbook.bookstore.member.service.IMemberService;
 import com.tbgbook.common.annotation.Log;
 import com.tbgbook.common.core.controller.BaseController;
@@ -36,6 +40,8 @@ import lombok.RequiredArgsConstructor;
 public class MemberController extends BaseController
 {
     private final IMemberService memberService;
+
+    private final IMemberFreezeService memberFreezeService;
 
     /**
      * 查询会员列表（可按卡号 / 手机号 / 昵称 / 姓名 / 等级 / 认证状态 / 状态 / 来源与建档时间区间筛选；
@@ -91,5 +97,41 @@ public class MemberController extends BaseController
     public AjaxResult remove(@PathVariable Long[] memberIds)
     {
         return toAjax(memberService.removeMembers(memberIds));
+    }
+
+    /**
+     * 冻结会员 / 拉黑（同步会员状态为 2冻结 / 3黑名单）。
+     */
+    @PreAuthorize("@ss.hasPermi('member:freeze:add')")
+    @Log(title = "会员冻结", businessType = BusinessType.UPDATE)
+    @PostMapping("/{memberId}/freeze")
+    public AjaxResult freeze(@PathVariable("memberId") Long memberId,
+            @RequestBody FreezeRequest request)
+    {
+        return success(memberFreezeService.freeze(memberId, request));
+    }
+
+    /**
+     * 解冻会员（恢复会员状态为 1正常）。
+     */
+    @PreAuthorize("@ss.hasPermi('member:freeze:unfreeze')")
+    @Log(title = "会员冻结", businessType = BusinessType.UPDATE)
+    @PostMapping("/{memberId}/unfreeze")
+    public AjaxResult unfreeze(@PathVariable("memberId") Long memberId,
+            @RequestBody UnfreezeRequest request)
+    {
+        return success(memberFreezeService.unfreeze(memberId, request));
+    }
+
+    /**
+     * 注销会员（匿名化 + 保留业务流水；注销前校验无未结清业务）。
+     */
+    @PreAuthorize("@ss.hasPermi('member:member:cancel')")
+    @Log(title = "会员注销", businessType = BusinessType.UPDATE)
+    @PostMapping("/{memberId}/cancel")
+    public AjaxResult cancel(@PathVariable("memberId") Long memberId,
+            @RequestBody CancelRequest request)
+    {
+        return toAjax(memberService.cancelMember(memberId, request.getReason()));
     }
 }

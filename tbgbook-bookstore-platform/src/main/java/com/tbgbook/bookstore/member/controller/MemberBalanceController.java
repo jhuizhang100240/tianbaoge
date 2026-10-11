@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.member.domain.MemberBalance;
 import com.tbgbook.bookstore.member.domain.RechargeRequest;
+import com.tbgbook.bookstore.member.domain.RefundRequest;
 import com.tbgbook.bookstore.member.service.IMemberBalanceService;
 import com.tbgbook.common.annotation.Log;
 import com.tbgbook.common.core.controller.BaseController;
@@ -28,8 +29,8 @@ import lombok.RequiredArgsConstructor;
 /**
  * 会员储值账户 Controller（页面 A-48）。
  *
- * <p>⚠️ `POST /member/balance/refund`（储值退款动作）因契约与需求的资金流向冲突**暂缓实现**，
- * 待裁决（见 `plan/待确认项.md`）—— 未裁决前不触碰资金语义。
+ * <p>`POST /member/balance/refund` 按 **C20 裁决（2026-10-11）** 为**后台出账退款**：
+ * 先核销赠送金、再退本金；`refundPrincipal=false` 时仅退赠送金。
  *
  * @author tbgbook
  */
@@ -105,5 +106,16 @@ public class MemberBalanceController extends BaseController
     public AjaxResult recharge(@RequestBody RechargeRequest request)
     {
         return success(memberBalanceService.recharge(request));
+    }
+
+    /**
+     * 储值退款（后台出账核销：先核销赠送金、再退本金；实际出款线下完成）。
+     */
+    @PreAuthorize("@ss.hasPermi('member:balance:refund')")
+    @Log(title = "会员储值退款", businessType = BusinessType.UPDATE)
+    @PostMapping("/refund")
+    public AjaxResult refund(@RequestBody RefundRequest request)
+    {
+        return success(memberBalanceService.refund(request));
     }
 }

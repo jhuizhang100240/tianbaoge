@@ -19,6 +19,8 @@ import com.tbgbook.bookstore.common.support.ReferenceGuard;
 import com.tbgbook.bookstore.member.domain.MemberBalance;
 import com.tbgbook.bookstore.member.domain.RechargeRequest;
 import com.tbgbook.bookstore.member.domain.RechargeResult;
+import com.tbgbook.bookstore.member.domain.RefundRequest;
+import com.tbgbook.bookstore.member.domain.RefundResult;
 import com.tbgbook.bookstore.member.domain.StoredActivity;
 import com.tbgbook.bookstore.member.domain.StoredValueLog;
 import com.tbgbook.bookstore.member.mapper.MemberBalanceMapper;
@@ -317,6 +319,84 @@ public class MemberBalanceServiceImpl extends ServiceImpl<MemberBalanceMapper, M
     // ==================================================================
     // 销售链路（收编入口）
     // ==================================================================
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>C20 裁决（2026-10-11）：后台出账退款 —— 先核销赠送金、再退本金；
+     * `refundPrincipal=false` 时只允许核销赠送金。实际出款（现金/原路）在线下完成，
+     * 系统只核销账户并留痕（单机无商户号，线上退款留阶段九）。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public RefundResult refund(RefundRequest request)
+    {
+        if (request.getMemberId() == null)
+        {
+            throw BizErrors.badRequest("会员ID不能为空");
+        }
+        BigDecimal amount = request.getRefundAmount();
+        if (amount == null || amount.signum() <= 0)
+        {
+            throw BizErrors.ruleViolated("退款金额必须大于 0");
+        }
+        if (request.getReason() == null || request.getReason().isBlank())
+        {
+            throw BizErrors.ruleViolated("退款原因未填");
+        }
+        String reason = request.getReason().trim();
+        if (reason.length() > 200)
+        {
+            throw BizErrors.ruleViolated("退款原因不能超过 200 个字符");
+        }
+        boolean allowPrincipal = (request.getRefundPrincipal() == null)
+                || request.getRefundPrincipal();
+
+        referenceGuard.requireExists(memberMapper, request.getMemberId(), "会员");
+        MemberBalance balance = selectByMemberId(request.getMemberId());
+        if (balance == null)
+        {
+            throw BizErrors.notFound("会员储值账户不存在（会员ID=" + request.getMemberId() + "）");
+        }
+        BigDecimal total = nz(balance.getTotalBalance());
+        if (amount.compareTo(total) > 0)
+        {
+            throw BizErrors.ruleViolated("退款金额超过可用余额（当前可用 " + total + " 元）");
+        }
+
+        BigDecimal giftBalance = nz(balance.getGiftBalance());
+        BigDecimal giftPart = (giftBalance.compareTo(amount) <= 0) ? giftBalance : amount;
+        BigDecimal principalPart = amount.subtract(giftPart);
+        if (principalPart.signum() > 0 && !allowPrincipal)
+        {
+            throw BizErrors.ruleViolated("赠送金不足且本金退款未开启：本次最多可退 " + giftPart + " 元");
+        }
+
+        if (baseMapper.deductBalance(request.getMemberId(), principalPart, giftPart, amount) <= 0)
+        {
+            throw BizErrors.ruleViolated("退款金额超过可用余额（余额刚被其他操作变动，请刷新后重试）");
+        }
+        baseMapper.syncBalanceSummary(request.getMemberId());
+        MemberBalance after = selectByMemberId(request.getMemberId());
+
+        // 出账：类型 5/6 记负数（消费退货的「回存」记正数，按符号区分方向）
+        if (principalPart.signum() > 0)
+        {
+            insertLog(request.getMemberId(), 5, principalPart.negate(), after, request.getRefNo(), reason);
+        }
+        if (giftPart.signum() > 0)
+        {
+            insertLog(request.getMemberId(), 6, giftPart.negate(), after, request.getRefNo(), reason);
+        }
+
+        RefundResult result = new RefundResult();
+        result.setPrincipalAfter(nz(after.getPrincipalBalance()));
+        result.setGiftAfter(nz(after.getGiftBalance()));
+        result.setTotalAfter(nz(after.getTotalBalance()));
+        result.setRefundGift(giftPart);
+        result.setRefundPrincipal(principalPart);
+        return result;
+    }
 
     /**
      * {@inheritDoc}

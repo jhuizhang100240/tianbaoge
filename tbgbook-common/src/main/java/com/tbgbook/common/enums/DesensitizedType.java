@@ -43,7 +43,13 @@ public enum DesensitizedType
     /**
      * 车牌号码，包含普通车辆、新能源车辆
      */
-    CAR_LICENSE(DesensitizedUtil::carLicense);
+    CAR_LICENSE(DesensitizedUtil::carLicense),
+
+    /**
+     * 学号，保留前 4 位（入学年份），其余以 **** 替代；长度不足 4 位时整体 ****
+     * （阶段五步骤③ 为会员学号认证新增，NFR-S8）
+     */
+    STUDENT_NO(s -> s.length() <= 4 ? "****" : s.substring(0, 4) + "****");
 
     private final Function<String, String> desensitizer;
 

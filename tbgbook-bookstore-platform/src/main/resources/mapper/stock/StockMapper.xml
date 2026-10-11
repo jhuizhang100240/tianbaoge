@@ -159,4 +159,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         set safety_qty = #{safetyQty}, update_time = now()
         where book_id = #{bookId}
     </update>
+
+    <!--
+      借出 / 归还：条件更新，不参与实体乐观锁（借阅单本身才是并发边界）。
+      借出要求 qty_available >= 1，归还要求 qty_borrowed >= 1 —— 影响 0 行即并发被抢。
+    -->
+    <update id="lendOne">
+        update biz_stock
+        set qty_available = qty_available - 1,
+            qty_borrowed  = qty_borrowed + 1,
+            update_time   = now()
+        where stock_id = #{stockId}
+          and qty_available &gt;= 1
+    </update>
+
+    <update id="giveBackOne">
+        update biz_stock
+        set qty_borrowed  = qty_borrowed - 1,
+            qty_available = qty_available + 1,
+            update_time   = now()
+        where stock_id = #{stockId}
+          and qty_borrowed &gt;= 1
+    </update>
 </mapper>

@@ -78,4 +78,20 @@ public interface StockMapper extends BaseMapper<Stock>
      * @return 影响行数（该书的库存行数；无库存行时为 0）
      */
     int updateSafetyQty(@Param("bookId") Long bookId, @Param("safetyQty") Integer safetyQty);
+
+    /**
+     * 借出：可售 -1、借出 +1（**条件更新**，可售为 0 时影响 0 行 → 并发下不会超借）。
+     *
+     * @param stockId 库存行ID
+     * @return 影响行数；0 = 可售不足（或并发被抢）
+     */
+    int lendOne(@Param("stockId") Long stockId);
+
+    /**
+     * 归还：借出 -1、可售 +1（**条件更新**，借出为 0 时影响 0 行）。
+     *
+     * @param stockId 库存行ID
+     * @return 影响行数；0 = 借出数量不足（或并发被抢）
+     */
+    int giveBackOne(@Param("stockId") Long stockId);
 }

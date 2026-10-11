@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ biz_member 没有 del_flag（非基础数据表；离场走注销）—— 不要照抄其它表的 del_flag 过滤
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberMapper">
+
+    <resultMap type="Member" id="MemberResult">
+        <result property="memberId"         column="member_id"         />
+        <result property="storeId"          column="store_id"          />
+        <result property="memberNo"         column="member_no"         />
+        <result property="phone"            column="phone"             />
+        <result property="nickname"         column="nickname"          />
+        <result property="realName"         column="real_name"         />
+        <result property="avatar"           column="avatar"            />
+        <result property="gender"           column="gender"            />
+        <result property="birthday"         column="birthday"          />
+        <result property="levelId"          column="level_id"          />
+        <result property="levelName"        column="level_name"        />
+        <result property="growthValue"      column="growth_value"      />
+        <result property="points"           column="points"            />
+        <result property="balancePrincipal" column="balance_principal" />
+        <result property="balanceGift"      column="balance_gift"      />
+        <result property="depositBalance"   column="deposit_balance"   />
+        <result property="studentStatus"    column="student_status"    />
+        <result property="consumeCount"     column="consume_count"     />
+        <result property="consumeAmount"    column="consume_amount"    />
+        <result property="lastConsumeTime"  column="last_consume_time" />
+        <result property="registerTime"     column="register_time"     />
+        <result property="registerSource"   column="register_source"   />
+        <result property="status"           column="status"            />
+        <result property="cancelTime"       column="cancel_time"       />
+        <result property="anonymized"       column="anonymized"        />
+        <result property="createBy"         column="create_by"         />
+        <result property="createTime"       column="create_time"       />
+        <result property="updateBy"         column="update_by"         />
+        <result property="updateTime"       column="update_time"       />
+        <result property="remark"           column="remark"            />
+    </resultMap>
+
+    <sql id="selectMemberVo">
+        select m.member_id, m.store_id, m.member_no, m.phone, m.nickname, m.real_name,
+               m.avatar, m.gender, m.birthday, m.level_id, m.level_name, m.growth_value,
+               m.points, m.balance_principal, m.balance_gift, m.deposit_balance,
+               m.student_status, m.consume_count, m.consume_amount, m.last_consume_time,
+               m.register_time, m.register_source, m.status, m.cancel_time, m.anonymized,
+               m.create_by, m.create_time, m.update_by, m.update_time, m.remark
+        from biz_member m
+    </sql>
+
+    <select id="selectMemberList" parameterType="Member" resultMap="MemberResult">
+        <include refid="selectMemberVo"/>
+        <where>
+            <if test="memberNo != null and memberNo != ''">
+                and m.member_no = #{memberNo}
+            </if>
+            <if test="phone != null and phone != ''">
+                and m.phone = #{phone}
+            </if>
+            <if test="nickname != null and nickname != ''">
+                and m.nickname like concat('%', #{nickname}, '%')
+            </if>
+            <if test="realName != null and realName != ''">
+                and m.real_name like concat('%', #{realName}, '%')
+            </if>
+            <if test="levelId != null">
+                and m.level_id = #{levelId}
+            </if>
+            <if test="studentStatus != null">
+                and m.student_status = #{studentStatus}
+            </if>
+            <if test="status != null">
+                and m.status = #{status}
+            </if>
+            <if test="registerSource != null">
+                and m.register_source = #{registerSource}
+            </if>
+            <!-- 通用日期区间：与 addDateRange() 的 params[beginTime]/params[endTime] 约定一致 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and m.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and m.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by m.member_id desc
+    </select>
+</mapper>

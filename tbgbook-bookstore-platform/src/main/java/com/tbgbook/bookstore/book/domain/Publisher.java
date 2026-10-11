@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import com.tbgbook.common.annotation.Excel;
 import com.tbgbook.common.core.domain.BaseEntity;
@@ -79,7 +80,8 @@ public class Publisher extends BaseEntity
     @TableField("status")
     private String status;
 
-    /** 删除标志（0存在 2删除） */
+    /** 删除标志（0存在 2删除）。**基础数据表**；`READ_ONLY` 防止客户端注入，见 `Promotion#delFlag` */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     @TableLogic(value = "0", delval = "2")
     private String delFlag;
 

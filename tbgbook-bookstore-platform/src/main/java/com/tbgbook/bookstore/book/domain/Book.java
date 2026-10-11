@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
@@ -182,7 +183,8 @@ public class Book extends BaseEntity
     @TableField("sale_count")
     private Long saleCount;
 
-    /** 删除标志（0存在 2删除） */
+    /** 删除标志（0存在 2删除）。**基础数据表**；`READ_ONLY` 防止客户端注入，见 `Promotion#delFlag` */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     @TableLogic(value = "0", delval = "2")
     private String delFlag;
 

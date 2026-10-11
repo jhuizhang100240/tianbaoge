@@ -43,4 +43,22 @@ public interface MemberMapper extends BaseMapper<Member>
 
     /** 消费汇总：次数 +1、金额累加、最近消费时间刷新 */
     int addConsume(@Param("memberId") Long memberId, @Param("amount") BigDecimal amount);
+
+    /**
+     * 借阅押金余额累加（缴纳 / 退还；正负由调用方保证）。
+     *
+     * @param memberId 会员ID
+     * @param delta    变动金额（缴纳为正、退还为负）
+     * @return 影响行数
+     */
+    int addDeposit(@Param("memberId") Long memberId, @Param("delta") BigDecimal delta);
+
+    /**
+     * 借阅押金余额**条件扣减**（余额足够才扣，防并发扣成负数）。
+     *
+     * @param memberId 会员ID
+     * @param amount   扣减金额（正数）
+     * @return 影响行数；0 = 余额不足（或并发被抢）
+     */
+    int deductDeposit(@Param("memberId") Long memberId, @Param("amount") BigDecimal amount);
 }

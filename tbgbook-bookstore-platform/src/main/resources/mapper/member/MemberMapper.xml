@@ -123,4 +123,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_time = now()
         where member_id = #{memberId}
     </update>
+
+    <!-- 借阅押金余额累加（缴纳为正 / 退还为负；退还前先校验无在借与未结清罚金） -->
+    <update id="addDeposit">
+        update biz_member
+        set deposit_balance = deposit_balance + #{delta},
+            update_time = now()
+        where member_id = #{memberId}
+          and deposit_balance + #{delta} &gt;= 0
+    </update>
+
+    <!-- 借阅押金条件扣减（用于罚金 / 赔偿从押金扣除） -->
+    <update id="deductDeposit">
+        update biz_member
+        set deposit_balance = deposit_balance - #{amount},
+            update_time = now()
+        where member_id = #{memberId}
+          and deposit_balance &gt;= #{amount}
+    </update>
 </mapper>

@@ -1,5 +1,6 @@
 package com.tbgbook.bookstore.borrow.domain;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -10,10 +11,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.tbgbook.common.core.domain.BaseEntity;
 
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 /**
  * 借阅预约对象 biz_borrow_reserve（页面 A-58、B-18，FR-4.5.6）。
@@ -26,9 +25,8 @@ import lombok.EqualsAndHashCode;
  * @author tbgbook
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
 @TableName("biz_borrow_reserve")
-public class BorrowReserve extends BaseEntity
+public class BorrowReserve implements Serializable
 {
     private static final long serialVersionUID = 1L;
 
@@ -102,6 +100,21 @@ public class BorrowReserve extends BaseEntity
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @TableField("pickup_time")
     private LocalDateTime pickupTime;
+
+    /** 创建时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField("create_time")
+    private LocalDateTime createTime;
+
+    /** 更新时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField("update_time")
+    private LocalDateTime updateTime;
+
+    /** 取消原因（**非表字段**，取消动作写进 update 的附注；本表没有 remark 列） */
+    @JsonIgnore
+    @TableField(exist = false)
+    private String remark;
 
     /** 查询用：创建时间区间（契约 {@code params[beginTime]} / {@code params[endTime]}，不落库） */
     @JsonIgnore

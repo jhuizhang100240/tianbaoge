@@ -181,4 +181,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where stock_id = #{stockId}
           and qty_borrowed &gt;= 1
     </update>
+
+    <!--
+      赔偿去向：转残损（借出 → 残损）或直接报损（借出 -1，实物总量减少）。
+      同样用条件更新防并发，影响 0 行即被抢。
+    -->
+    <update id="borrowedToDamaged">
+        update biz_stock
+        set qty_borrowed = qty_borrowed - 1,
+            qty_damaged  = qty_damaged + 1,
+            update_time  = now()
+        where stock_id = #{stockId}
+          and qty_borrowed &gt;= 1
+    </update>
+
+    <update id="borrowedToLoss">
+        update biz_stock
+        set qty_borrowed = qty_borrowed - 1,
+            update_time  = now()
+        where stock_id = #{stockId}
+          and qty_borrowed &gt;= 1
+    </update>
 </mapper>

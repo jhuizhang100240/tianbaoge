@@ -71,4 +71,14 @@ public interface BorrowRecordMapper extends BaseMapper<BorrowRecord>
 
     /** 在借单是否被他人预约（排队中 / 已到书待取） */
     int countActiveReserve(@Param("bookId") Long bookId);
+
+    /**
+     * 该会员当前在借单中最早应还时间（用于估算逾期罚金；无在借则 null）。
+     *
+     * @param memberId 会员ID
+     * @param bookId   图书ID
+     * @return 在借单的 due_time；无则 null
+     */
+    java.time.LocalDateTime selectActiveDueTime(@Param("memberId") Long memberId,
+            @Param("bookId") Long bookId);
 }

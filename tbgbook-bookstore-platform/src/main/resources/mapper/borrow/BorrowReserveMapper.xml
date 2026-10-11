@@ -18,17 +18,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="notifyTime"  column="notify_time"  />
         <result property="expireTime"  column="expire_time"  />
         <result property="pickupTime"  column="pickup_time"  />
-        <result property="createBy"    column="create_by"    />
         <result property="createTime"  column="create_time"  />
-        <result property="updateBy"    column="update_by"    />
         <result property="updateTime"  column="update_time"  />
-        <result property="remark"      column="remark"       />
     </resultMap>
 
     <select id="selectBorrowReserveList" parameterType="BorrowReserve" resultMap="BorrowReserveResult">
         select r.reserve_id, r.store_id, r.reserve_no, r.member_id, r.book_id, r.isbn, r.title,
                r.queue_no, r.status, r.reserve_time, r.notify_time, r.expire_time, r.pickup_time,
-               r.create_by, r.create_time, r.update_by, r.update_time, r.remark
+               r.create_time, r.update_time
         from biz_borrow_reserve r
         <where>
             <if test="reserveNo != null and reserveNo != ''">

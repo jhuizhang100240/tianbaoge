@@ -94,4 +94,20 @@ public interface StockMapper extends BaseMapper<Stock>
      * @return 影响行数；0 = 借出数量不足（或并发被抢）
      */
     int giveBackOne(@Param("stockId") Long stockId);
+
+    /**
+     * 赔偿转残损：借出 -1、残损 +1（**条件更新**，借出为 0 时影响 0 行）。
+     *
+     * @param stockId 库存行ID
+     * @return 影响行数；0 = 借出数量不足（或并发被抢）
+     */
+    int borrowedToDamaged(@Param("stockId") Long stockId);
+
+    /**
+     * 丢失报损：借出 -1（实物总量随之减少，**条件更新**）。
+     *
+     * @param stockId 库存行ID
+     * @return 影响行数；0 = 借出数量不足（或并发被抢）
+     */
+    int borrowedToLoss(@Param("stockId") Long stockId);
 }

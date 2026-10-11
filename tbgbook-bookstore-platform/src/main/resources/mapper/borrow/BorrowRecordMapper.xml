@@ -194,4 +194,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where r.book_id = #{bookId}
           and r.status in (1, 2)
     </select>
+
+    <select id="selectActiveDueTime" resultType="java.time.LocalDateTime">
+        select min(b.due_time)
+        from biz_borrow b
+        where b.status in (1, 3)
+          and b.return_time is null
+          <if test="memberId != null">
+              and b.member_id = #{memberId}
+          </if>
+          <if test="bookId != null">
+              and b.book_id = #{bookId}
+          </if>
+    </select>
 </mapper>

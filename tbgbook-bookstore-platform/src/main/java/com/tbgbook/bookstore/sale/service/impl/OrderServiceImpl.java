@@ -28,13 +28,14 @@ import java.util.UUID;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.tbgbook.bookstore.common.exception.BizErrors;
 import com.tbgbook.common.utils.SecurityUtils;
+import com.tbgbook.bookstore.member.service.IMemberPointService;
+import com.tbgbook.bookstore.member.service.IMemberService;
 import com.tbgbook.bookstore.sale.domain.CheckoutRequest;
 import com.tbgbook.bookstore.sale.domain.OrderExportRequest;
 import com.tbgbook.bookstore.sale.domain.OrderExportResult;
 import com.tbgbook.bookstore.sale.domain.OrderPickupResult;
 import com.tbgbook.bookstore.sale.domain.OrderRedResult;
 import com.tbgbook.bookstore.sale.mapper.ExportTaskMapper;
-import com.tbgbook.bookstore.sale.mapper.MemberWriteMapper;
 import com.tbgbook.bookstore.sale.service.ICheckoutService;
 import com.tbgbook.bookstore.sale.support.StockDeductSupport;
 import com.tbgbook.bookstore.sale.service.IOrderService;
@@ -63,7 +64,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     private final StockDeductSupport stockDeduct;
 
-    private final MemberWriteMapper memberWriteMapper;
+    private final IMemberPointService memberPointService;
+
+    private final IMemberService memberService;
 
     private final ExportTaskMapper exportTaskMapper;
 
@@ -341,13 +344,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         patch.setFinishTime(now);
         referenceGuard.requireAffected(baseMapper.updateById(patch), "销售订单");
 
-        // 核销时才完成消费 → 此时累加积分与成长值（线上下单的口径）
+        // 核销时才完成消费 → 此时累加积分与消费汇总（线上下单的口径）
+        // 收编（阶段五步骤②）：积分走会员域 Service（写批次与流水）
         if (order.getMemberId() != null && order.getMemberId() > 0 && nzi(order.getPointGain()) > 0)
         {
-            memberWriteMapper.addPoints(order.getMemberId(), order.getPointGain());
-            memberWriteMapper.insertPointLog(order.getMemberId(), 1, order.getPointGain(), 0,
+            memberPointService.awardPoints(order.getMemberId(), order.getPointGain(),
                     order.getOrderNo(), "取货核销获得");
-            memberWriteMapper.addConsume(order.getMemberId(), nz(order.getPayAmount()));
+            memberService.addConsume(order.getMemberId(), nz(order.getPayAmount()));
         }
 
         OrderPickupResult result = new OrderPickupResult();

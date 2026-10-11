@@ -91,4 +91,36 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </where>
         order by m.member_id desc
     </select>
+
+    <update id="addPoints">
+        update biz_member
+        set points = points + #{delta}, update_time = now()
+        where member_id = #{memberId}
+    </update>
+
+    <!-- 条件更新：积分足够才扣（并发安全） -->
+    <update id="deductPoints">
+        update biz_member
+        set points = points - #{amount}, update_time = now()
+        where member_id = #{memberId} and points &gt;= #{amount}
+    </update>
+
+    <select id="selectPoints" resultType="java.lang.Integer">
+        select points from biz_member where member_id = #{memberId}
+    </select>
+
+    <update id="addGrowth">
+        update biz_member
+        set growth_value = growth_value + #{delta}, update_time = now()
+        where member_id = #{memberId}
+    </update>
+
+    <update id="addConsume">
+        update biz_member
+        set consume_count = consume_count + 1,
+            consume_amount = consume_amount + #{amount},
+            last_consume_time = now(),
+            update_time = now()
+        where member_id = #{memberId}
+    </update>
 </mapper>

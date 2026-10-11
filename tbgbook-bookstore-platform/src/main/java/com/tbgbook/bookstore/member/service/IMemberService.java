@@ -1,5 +1,6 @@
 package com.tbgbook.bookstore.member.service;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import com.baomidou.mybatisplus.spring.service.IService;
@@ -51,4 +52,13 @@ public interface IMemberService extends IService<Member>
      * @return 影响行数
      */
     int removeMembers(Long[] memberIds);
+
+    /**
+     * 消费汇总：次数 +1、金额累加、最近消费时间刷新（结算 / 取货核销调用）。
+     *
+     * @param memberId 会员ID
+     * @param amount   实付金额
+     * @return 影响行数
+     */
+    int addConsume(Long memberId, BigDecimal amount);
 }

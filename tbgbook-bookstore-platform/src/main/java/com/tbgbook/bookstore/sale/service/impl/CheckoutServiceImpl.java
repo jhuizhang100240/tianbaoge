@@ -22,6 +22,9 @@ import com.tbgbook.bookstore.sale.domain.CheckoutRequest;
 import com.tbgbook.bookstore.sale.domain.CheckoutResult;
 import com.tbgbook.bookstore.sale.domain.Coupon;
 import com.tbgbook.bookstore.sale.domain.CouponTemplate;
+import com.tbgbook.bookstore.member.service.IMemberGrowthService;
+import com.tbgbook.bookstore.member.service.IMemberPointService;
+import com.tbgbook.bookstore.member.service.IMemberService;
 import com.tbgbook.bookstore.sale.domain.MemberBrief;
 import com.tbgbook.bookstore.sale.domain.Order;
 import com.tbgbook.bookstore.sale.domain.OrderHold;
@@ -94,6 +97,12 @@ public class CheckoutServiceImpl implements ICheckoutService
     private final CouponMapper couponMapper;
 
     private final CouponTemplateMapper couponTemplateMapper;
+
+    private final IMemberPointService memberPointService;
+
+    private final IMemberGrowthService memberGrowthService;
+
+    private final IMemberService memberService;
 
     private final MemberReadMapper memberReadMapper;
 
@@ -315,30 +324,25 @@ public class CheckoutServiceImpl implements ICheckoutService
         }
 
         // ---------- ⑤⑥ 会员侧结果：积分 / 成长值 / 消费汇总 ----------
+        // 收编（阶段五步骤②）：积分与成长值改写会员域 Service —— 积分按批次先到期先消耗、
+        // 成长值在会员域内完成「达标自动升级」，销售域不再直接写 biz_member。
         if (member != null)
         {
-            int pointsAfter = nzi(member.getPoints());
             if (t.getPointUsed() > 0)
             {
-                memberWriteMapper.addPoints(memberId, -t.getPointUsed());
-                pointsAfter -= t.getPointUsed();
-                memberWriteMapper.insertPointLog(memberId, 2, -t.getPointUsed(), pointsAfter, orderNo, "收银结算抵扣");
+                memberPointService.deductPoints(memberId, t.getPointUsed(), orderNo, "收银结算抵扣");
             }
             if (t.getPointGain() > 0)
             {
-                memberWriteMapper.addPoints(memberId, t.getPointGain());
-                pointsAfter += t.getPointGain();
-                memberWriteMapper.insertPointLog(memberId, 1, t.getPointGain(), pointsAfter, orderNo, "收银结算获得");
+                memberPointService.awardPoints(memberId, t.getPointGain(), orderNo, "收银结算获得");
             }
             // 成长值 = 实付金额（消费 1 元 = 1 成长值），**只增不减**
             int gain = t.getPayAmount().setScale(0, RoundingMode.DOWN).intValue();
             if (gain > 0)
             {
-                memberWriteMapper.addGrowth(memberId, gain);
-                memberWriteMapper.insertGrowthLog(memberId, gain,
-                        nzi(member.getPoints()) + gain, orderNo);
+                memberGrowthService.addGrowth(memberId, 1, gain, orderNo, "消费累加");
             }
-            memberWriteMapper.addConsume(memberId, t.getPayAmount());
+            memberService.addConsume(memberId, t.getPayAmount());
         }
 
         // ---------- 挂单转入：标记为已取单结算 ----------

@@ -1,6 +1,7 @@
 package com.tbgbook.bookstore.member.service.impl;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collection;
@@ -217,6 +218,15 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         }
         // biz_member 无 @TableLogic —— 此为物理删除，仅对「无任何痕迹」的误录会员开放
         return baseMapper.deleteByIds(ids);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int addConsume(Long memberId, BigDecimal amount)
+    {
+        return baseMapper.addConsume(memberId, amount == null ? BigDecimal.ZERO : amount);
     }
 
     /** 手机号去空格并做非空校验（格式由实体注解校验） */

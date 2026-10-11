@@ -3,30 +3,11 @@
 PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <!--
-  收银结算的会员域写操作（跨域写；只写「结算本该落地的会员侧结果」）
+  收银结算遗留的会员域储值写操作（阶段五步骤②后只剩储值）
   ⚠️ 一律 #{}，禁止 ${}
   ⚠️ 储值扣减是**条件更新**（余额够才扣）：影响 0 行 = 余额不足，由 Service 转 422
 -->
 <mapper namespace="com.tbgbook.bookstore.sale.mapper.MemberWriteMapper">
-
-    <update id="addPoints">
-        update biz_member set points = points + #{delta}, update_time = now()
-        where member_id = #{memberId}
-    </update>
-
-    <update id="addGrowth">
-        update biz_member set growth_value = growth_value + #{delta}, update_time = now()
-        where member_id = #{memberId}
-    </update>
-
-    <update id="addConsume">
-        update biz_member
-        set consume_count = consume_count + 1,
-            consume_amount = consume_amount + #{amount},
-            last_consume_time = now(),
-            update_time = now()
-        where member_id = #{memberId}
-    </update>
 
     <!-- 储值扣减：total_balance >= 金额 才扣（并发安全，不会超扣） -->
     <update id="deductBalance">
@@ -67,16 +48,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from biz_member_balance b where b.member_id = #{memberId}
     </insert>
 
-    <insert id="insertPointLog">
-        insert into biz_point_log (member_id, change_type, points_change, points_after,
-            batch_id, ref_no, create_by, create_time, remark)
-        values (#{memberId}, #{changeType}, #{pointsChange}, #{pointsAfter},
-            0, #{refNo}, '', now(), #{remark})
-    </insert>
-
-    <insert id="insertGrowthLog">
-        insert into biz_member_growth_log (member_id, change_type, growth_change,
-            growth_after, ref_no, create_by, create_time, remark)
-        values (#{memberId}, 1, #{growthChange}, #{growthAfter}, #{refNo}, '', now(), '消费累加')
-    </insert>
 </mapper>

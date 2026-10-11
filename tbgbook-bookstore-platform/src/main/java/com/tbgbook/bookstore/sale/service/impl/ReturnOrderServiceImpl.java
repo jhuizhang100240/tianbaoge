@@ -25,6 +25,7 @@ import com.tbgbook.bookstore.common.support.ReferenceGuard;
 import com.tbgbook.bookstore.sale.domain.Coupon;
 import com.tbgbook.bookstore.sale.domain.Order;
 import com.tbgbook.bookstore.sale.domain.OrderItem;
+import com.tbgbook.bookstore.member.service.IMemberPointService;
 import com.tbgbook.bookstore.sale.domain.Payment;
 import com.tbgbook.bookstore.sale.domain.ReturnNoOrderRequest;
 import com.tbgbook.bookstore.sale.domain.ReturnNoOrderResult;
@@ -91,6 +92,8 @@ public class ReturnOrderServiceImpl extends ServiceImpl<ReturnOrderMapper, Retur
     private final MemberWriteMapper memberWriteMapper;
 
     private final MemberReadMapper memberReadMapper;
+
+    private final IMemberPointService memberPointService;
 
     private final ReturnOrderItemMapper itemMapper;
 
@@ -637,9 +640,9 @@ public class ReturnOrderServiceImpl extends ServiceImpl<ReturnOrderMapper, Retur
             }
             if (refundPoint > 0)
             {
-                memberWriteMapper.addPoints(origin.getMemberId(), refundPoint);
-                memberWriteMapper.insertPointLog(origin.getMemberId(), 5, refundPoint,
-                        memberPoints(origin.getMemberId()), order.getReturnNo(), "销售退货返还");
+                // 收编（阶段五步骤②）：返还积分走会员域 Service（写批次与流水）
+                memberPointService.returnPoints(origin.getMemberId(), refundPoint,
+                        order.getReturnNo(), "销售退货返还");
             }
 
             if (origin.getCouponId() != null && origin.getCouponId() > 0)

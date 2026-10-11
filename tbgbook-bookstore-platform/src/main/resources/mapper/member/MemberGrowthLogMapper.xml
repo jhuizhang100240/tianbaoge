@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  成长值流水 Mapper XML（只增不减）
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询；不写 insert / update / delete
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberGrowthLogMapper">
+
+    <resultMap type="MemberGrowthLog" id="MemberGrowthLogResult">
+        <result property="logId"        column="log_id"        />
+        <result property="memberId"     column="member_id"     />
+        <result property="changeType"   column="change_type"   />
+        <result property="growthChange" column="growth_change" />
+        <result property="growthAfter"  column="growth_after"  />
+        <result property="refNo"        column="ref_no"        />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+        <result property="remark"       column="remark"        />
+    </resultMap>
+
+    <sql id="selectMemberGrowthLogVo">
+        select l.log_id, l.member_id, l.change_type, l.growth_change, l.growth_after,
+               l.ref_no, l.create_by, l.create_time, l.remark
+        from biz_member_growth_log l
+    </sql>
+
+    <select id="selectMemberGrowthLogList" parameterType="MemberGrowthLog" resultMap="MemberGrowthLogResult">
+        <include refid="selectMemberGrowthLogVo"/>
+        <where>
+            <if test="memberId != null">
+                and l.member_id = #{memberId}
+            </if>
+            <if test="changeType != null">
+                and l.change_type = #{changeType}
+            </if>
+            <if test="refNo != null and refNo != ''">
+                and l.ref_no = #{refNo}
+            </if>
+        </where>
+        order by l.log_id desc
+    </select>
+</mapper>

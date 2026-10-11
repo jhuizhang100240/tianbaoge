@@ -1,6 +1,9 @@
 package com.tbgbook.bookstore.member.mapper;
 
+import java.math.BigDecimal;
 import java.util.List;
+
+import org.apache.ibatis.annotations.Param;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.tbgbook.bookstore.member.domain.Member;
@@ -21,4 +24,23 @@ public interface MemberMapper extends BaseMapper<Member>
      * @return 会员集合
      */
     List<Member> selectMemberList(Member member);
+
+    /** 积分累加（正数） */
+    int addPoints(@Param("memberId") Long memberId, @Param("delta") int delta);
+
+    /**
+     * 积分扣减（**条件更新**：余额足够才扣），供积分批次消耗前的总账校验与回写。
+     *
+     * @return 影响行数；0=积分不足（或并发被抢）
+     */
+    int deductPoints(@Param("memberId") Long memberId, @Param("amount") int amount);
+
+    /** 读取当前积分余额 */
+    Integer selectPoints(@Param("memberId") Long memberId);
+
+    /** 成长值累加（只增不减） */
+    int addGrowth(@Param("memberId") Long memberId, @Param("delta") int delta);
+
+    /** 消费汇总：次数 +1、金额累加、最近消费时间刷新 */
+    int addConsume(@Param("memberId") Long memberId, @Param("amount") BigDecimal amount);
 }

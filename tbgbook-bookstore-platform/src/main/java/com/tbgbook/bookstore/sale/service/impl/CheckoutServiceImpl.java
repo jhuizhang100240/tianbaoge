@@ -191,21 +191,16 @@ public class CheckoutServiceImpl implements ICheckoutService
                     + t.getPayAmount() + "）");
         }
 
-        // ---------- 先定订单号（库存流水要带它） ----------
+        // ---------- ① 先落订单头，拿到真实主键后再定订单号 ----------
+        // ⚠️ 顺序不可颠倒：库存流水 / 明细 / 支付都要带订单号。
+        // 若先用 selectNextOrderId() 的「预测值」生成单号再写库，实际主键与预测值不一致时，
+        // 只能回改订单头，**已写入的 biz_stock_flow.biz_no 会留在错误单号上**（实测踩到：
+        // 流水挂 SO...000672，订单实际是 SO...000773，对账直接对不上）。
         LocalDateTime now = LocalDateTime.now();
-        Long predictedId = orderMapper.selectNextOrderId();
-        String orderNo = buildOrderNo(predictedId == null ? 1L : predictedId);
-
-        // ---------- ① 扣减库存（多库位贪心 + 乐观锁 + 写流水） ----------
-        for (TrialResult.Line line : t.getItems())
-        {
-            stockDeduct.deduct(line.getBookId(), line.getQty(), orderNo, "收银销售出库");
-        }
-
-        // ---------- ② 写订单头与明细 ----------
 
         Order order = new Order();
-        order.setOrderNo(orderNo);
+        // 先占位：order_no 是 NOT NULL，落库后用真实主键重算并回写
+        order.setOrderNo("TMP");
         order.setOrderType(Order.TYPE_STORE);
         order.setMemberId(memberId);
         if (member != null)
@@ -246,17 +241,20 @@ public class CheckoutServiceImpl implements ICheckoutService
         order.setPayTime(null);
 
         orderMapper.insert(order);
-        String actualNo = buildOrderNo(order.getOrderId());
-        if (!actualNo.equals(orderNo))
+        String orderNo = buildOrderNo(order.getOrderId());
+        Order noPatch = new Order();
+        noPatch.setOrderId(order.getOrderId());
+        noPatch.setOrderNo(orderNo);
+        referenceGuard.requireAffected(orderMapper.updateById(noPatch), "销售订单");
+        order.setOrderNo(orderNo);
+
+        // ---------- ② 扣减库存（多库位贪心 + 乐观锁 + 写流水） ----------
+        for (TrialResult.Line line : t.getItems())
         {
-            Order patch = new Order();
-            patch.setOrderId(order.getOrderId());
-            patch.setOrderNo(actualNo);
-            orderMapper.updateById(patch);
-            order.setOrderNo(actualNo);
-            orderNo = actualNo;
+            stockDeduct.deduct(line.getBookId(), line.getQty(), orderNo, "收银销售出库");
         }
 
+        // ---------- ③ 写订单明细 ----------
         for (TrialResult.Line line : t.getItems())
         {
             OrderItem item = new OrderItem();

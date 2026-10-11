@@ -65,10 +65,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </select>
 
     <select id="selectNextCouponId" resultType="java.lang.Long">
-        select ifnull(auto_increment, 1)
-        from information_schema.tables
-        where table_schema = (select database())
-          and table_name = 'biz_coupon'
+        <!--
+          ⚠️ 不能用 information_schema.tables.auto_increment：MySQL 8 会缓存该值
+          （information_schema_stats_expiry 默认 86400s），删行 / 清表后仍返回旧值，
+          会让预测券码与既有券码撞 uk_coupon_code（实测踩到：auto_increment 显示 290，
+          实际 max(coupon_id)=304）。max(coupon_id)+1 恒为单调递增值；
+          插入后 issueCoupon 仍会把券码按真实主键校正一次。
+        -->
+        select ifnull(max(coupon_id), 0) + 1 from biz_coupon
     </select>
 
     <!-- 每人限领校验：只算「未使用且未过期」的（用掉/过期的不该继续占额度） -->

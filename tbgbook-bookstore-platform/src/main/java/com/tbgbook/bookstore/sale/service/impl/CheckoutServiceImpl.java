@@ -22,6 +22,7 @@ import com.tbgbook.bookstore.sale.domain.CheckoutRequest;
 import com.tbgbook.bookstore.sale.domain.CheckoutResult;
 import com.tbgbook.bookstore.sale.domain.Coupon;
 import com.tbgbook.bookstore.sale.domain.CouponTemplate;
+import com.tbgbook.bookstore.member.service.IMemberBalanceService;
 import com.tbgbook.bookstore.member.service.IMemberGrowthService;
 import com.tbgbook.bookstore.member.service.IMemberPointService;
 import com.tbgbook.bookstore.member.service.IMemberService;
@@ -35,7 +36,6 @@ import com.tbgbook.bookstore.sale.domain.TrialResult;
 import com.tbgbook.bookstore.sale.mapper.CouponMapper;
 import com.tbgbook.bookstore.sale.mapper.CouponTemplateMapper;
 import com.tbgbook.bookstore.sale.mapper.MemberReadMapper;
-import com.tbgbook.bookstore.sale.mapper.MemberWriteMapper;
 import com.tbgbook.bookstore.sale.mapper.OrderHoldMapper;
 import com.tbgbook.bookstore.sale.mapper.OrderItemMapper;
 import com.tbgbook.bookstore.sale.mapper.OrderMapper;
@@ -98,6 +98,8 @@ public class CheckoutServiceImpl implements ICheckoutService
 
     private final CouponTemplateMapper couponTemplateMapper;
 
+    private final IMemberBalanceService memberBalanceService;
+
     private final IMemberPointService memberPointService;
 
     private final IMemberGrowthService memberGrowthService;
@@ -105,8 +107,6 @@ public class CheckoutServiceImpl implements ICheckoutService
     private final IMemberService memberService;
 
     private final MemberReadMapper memberReadMapper;
-
-    private final MemberWriteMapper memberWriteMapper;
 
     private final ISysConfigService configService;
 
@@ -436,20 +436,9 @@ public class CheckoutServiceImpl implements ICheckoutService
             BigDecimal principalPart = amount.multiply(ratio[0]).setScale(SCALE, RoundingMode.DOWN);
             BigDecimal giftPart = amount.subtract(principalPart);
 
-            int rows = memberWriteMapper.deductBalance(memberId, principalPart, giftPart, amount);
-            if (rows <= 0)
-            {
-                throw BizErrors.ruleViolated("储值余额不足：本笔需支付 " + amount + " 元");
-            }
-            memberWriteMapper.syncBalanceSummary(memberId);
-            if (principalPart.signum() > 0)
-            {
-                memberWriteMapper.insertStoredValueLog(memberId, 3, principalPart.negate(), orderNo, "收银消费扣本金");
-            }
-            if (giftPart.signum() > 0)
-            {
-                memberWriteMapper.insertStoredValueLog(memberId, 4, giftPart.negate(), orderNo, "收银消费扣赠送金");
-            }
+            // 收编（阶段五步骤②b）：扣减、余额汇总与流水全部走会员域储值服务
+            memberBalanceService.deductBalance(memberId, principalPart, giftPart, amount, orderNo,
+                    "收银消费扣本金", "收银消费扣赠送金");
             return Payment.STATUS_SUCCESS;
         }
         // 微信 / 支付宝：单机无商户号 → 有交易号即视为已支付，否则待支付

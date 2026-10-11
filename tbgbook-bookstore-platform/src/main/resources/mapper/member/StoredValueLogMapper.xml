@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  储值流水 Mapper XML（只增不删）
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询；不写 insert / update / delete
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.StoredValueLogMapper">
+
+    <resultMap type="StoredValueLog" id="StoredValueLogResult">
+        <result property="logId"          column="log_id"          />
+        <result property="memberId"       column="member_id"       />
+        <result property="amountType"     column="amount_type"     />
+        <result property="changeAmount"   column="change_amount"   />
+        <result property="principalAfter" column="principal_after" />
+        <result property="giftAfter"      column="gift_after"      />
+        <result property="refNo"          column="ref_no"          />
+        <result property="createBy"       column="create_by"       />
+        <result property="createTime"     column="create_time"     />
+        <result property="remark"         column="remark"          />
+    </resultMap>
+
+    <sql id="selectStoredValueLogVo">
+        select l.log_id, l.member_id, l.amount_type, l.change_amount, l.principal_after,
+               l.gift_after, l.ref_no, l.create_by, l.create_time, l.remark
+        from biz_stored_value_log l
+    </sql>
+
+    <select id="selectStoredValueLogList" parameterType="StoredValueLog" resultMap="StoredValueLogResult">
+        <include refid="selectStoredValueLogVo"/>
+        <where>
+            <if test="memberId != null">
+                and l.member_id = #{memberId}
+            </if>
+            <if test="amountType != null">
+                and l.amount_type = #{amountType}
+            </if>
+            <if test="refNo != null and refNo != ''">
+                and l.ref_no = #{refNo}
+            </if>
+        </where>
+        order by l.log_id desc
+    </select>
+</mapper>

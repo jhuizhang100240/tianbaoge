@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  储值充值活动 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.StoredActivityMapper">
+
+    <resultMap type="StoredActivity" id="StoredActivityResult">
+        <result property="activityId"     column="activity_id"      />
+        <result property="storeId"        column="store_id"         />
+        <result property="activityName"   column="activity_name"    />
+        <result property="rechargeAmount" column="recharge_amount"  />
+        <result property="giftAmount"     column="gift_amount"      />
+        <result property="giftExpireDays" column="gift_expire_days" />
+        <result property="startTime"      column="start_time"       />
+        <result property="endTime"        column="end_time"         />
+        <result property="orderNum"       column="order_num"        />
+        <result property="isRecommend"    column="is_recommend"     />
+        <result property="status"         column="status"           />
+        <result property="createBy"       column="create_by"        />
+        <result property="createTime"     column="create_time"      />
+        <result property="updateBy"       column="update_by"        />
+        <result property="updateTime"     column="update_time"      />
+        <result property="remark"         column="remark"           />
+    </resultMap>
+
+    <sql id="selectStoredActivityVo">
+        select a.activity_id, a.store_id, a.activity_name, a.recharge_amount, a.gift_amount,
+               a.gift_expire_days, a.start_time, a.end_time, a.order_num, a.is_recommend,
+               a.status, a.create_by, a.create_time, a.update_by, a.update_time, a.remark
+        from biz_stored_activity a
+    </sql>
+
+    <select id="selectStoredActivityList" parameterType="StoredActivity" resultMap="StoredActivityResult">
+        <include refid="selectStoredActivityVo"/>
+        <where>
+            <if test="activityName != null and activityName != ''">
+                and a.activity_name like concat('%', #{activityName}, '%')
+            </if>
+            <if test="status != null">
+                and a.status = #{status}
+            </if>
+            <if test="isRecommend != null">
+                and a.is_recommend = #{isRecommend}
+            </if>
+            <if test="rechargeAmount != null">
+                and a.recharge_amount = #{rechargeAmount}
+            </if>
+            <!-- 通用日期区间：与 addDateRange() 的 params[beginTime]/params[endTime] 约定一致 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and a.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and a.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by a.order_num asc, a.activity_id asc
+    </select>
+</mapper>

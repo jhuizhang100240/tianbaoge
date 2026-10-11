@@ -25,6 +25,7 @@ import com.tbgbook.bookstore.common.support.ReferenceGuard;
 import com.tbgbook.bookstore.sale.domain.Coupon;
 import com.tbgbook.bookstore.sale.domain.Order;
 import com.tbgbook.bookstore.sale.domain.OrderItem;
+import com.tbgbook.bookstore.member.service.IMemberBalanceService;
 import com.tbgbook.bookstore.member.service.IMemberPointService;
 import com.tbgbook.bookstore.sale.domain.Payment;
 import com.tbgbook.bookstore.sale.domain.ReturnNoOrderRequest;
@@ -33,7 +34,6 @@ import com.tbgbook.bookstore.sale.domain.ReturnOrder;
 import com.tbgbook.bookstore.sale.domain.ReturnOrderItem;
 import com.tbgbook.bookstore.sale.mapper.CouponMapper;
 import com.tbgbook.bookstore.sale.mapper.MemberReadMapper;
-import com.tbgbook.bookstore.sale.mapper.MemberWriteMapper;
 import com.tbgbook.bookstore.sale.mapper.OrderItemMapper;
 import com.tbgbook.bookstore.sale.mapper.OrderMapper;
 import com.tbgbook.bookstore.sale.mapper.PaymentMapper;
@@ -89,9 +89,9 @@ public class ReturnOrderServiceImpl extends ServiceImpl<ReturnOrderMapper, Retur
 
     private final CouponMapper couponMapper;
 
-    private final MemberWriteMapper memberWriteMapper;
-
     private final MemberReadMapper memberReadMapper;
+
+    private final IMemberBalanceService memberBalanceService;
 
     private final IMemberPointService memberPointService;
 
@@ -571,18 +571,9 @@ public class ReturnOrderServiceImpl extends ServiceImpl<ReturnOrderMapper, Retur
                 BigDecimal[] ratio = balanceRatio(origin.getMemberId());
                 BigDecimal principalPart = part.multiply(ratio[0]).setScale(SCALE, RoundingMode.DOWN);
                 BigDecimal giftPart = part.subtract(principalPart);
-                memberWriteMapper.refundBalance(origin.getMemberId(), principalPart, giftPart);
-                memberWriteMapper.syncBalanceSummary(origin.getMemberId());
-                if (principalPart.signum() > 0)
-                {
-                    memberWriteMapper.insertStoredValueLog(origin.getMemberId(), 5, principalPart,
-                            order.getReturnNo(), "销售退货返本金");
-                }
-                if (giftPart.signum() > 0)
-                {
-                    memberWriteMapper.insertStoredValueLog(origin.getMemberId(), 6, giftPart,
-                            order.getReturnNo(), "销售退货返赠送金");
-                }
+                // 收编（阶段五步骤②b）：回退、余额汇总与流水全部走会员域储值服务
+                memberBalanceService.refundBalance(origin.getMemberId(), principalPart, giftPart,
+                        order.getReturnNo(), "销售退货返本金", "销售退货返赠送金");
             }
             else if (Objects.equals(p.getPayMethod(), Payment.METHOD_WECHAT)
                     || Objects.equals(p.getPayMethod(), Payment.METHOD_ALIPAY))

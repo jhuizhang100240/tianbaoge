@@ -3,6 +3,8 @@ package com.tbgbook.bookstore.member.domain;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -65,4 +67,10 @@ public class MemberBalance implements Serializable
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @TableField("update_time")
     private LocalDateTime updateTime;
+
+    /**
+     * 请求参数（创建时间区间筛选用，与 {@code BaseEntity#params} 同口径；非表字段）。
+     */
+    @TableField(exist = false)
+    private Map<String, Object> params = new HashMap<>();
 }

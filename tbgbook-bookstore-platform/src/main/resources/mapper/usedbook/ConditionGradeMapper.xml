@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  二手书成色等级 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询；不写 SELECT *（根 CLAUDE.md §6.2）
+  ⚠️ 一律 #{}，禁止 ${}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.usedbook.mapper.ConditionGradeMapper">
+
+    <resultMap type="ConditionGrade" id="ConditionGradeResult">
+        <result property="gradeId"     column="grade_id"     />
+        <result property="storeId"     column="store_id"     />
+        <result property="gradeCode"   column="grade_code"   />
+        <result property="gradeName"   column="grade_name"   />
+        <result property="priceFactor" column="price_factor" />
+        <result property="gradeDesc"   column="grade_desc"   />
+        <result property="orderNum"    column="order_num"    />
+        <result property="status"      column="status"       />
+        <result property="delFlag"     column="del_flag"     />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"  column="update_time"  />
+        <result property="remark"      column="remark"       />
+    </resultMap>
+
+    <select id="selectConditionGradeList" parameterType="ConditionGrade" resultMap="ConditionGradeResult">
+        select g.grade_id, g.store_id, g.grade_code, g.grade_name, g.price_factor, g.grade_desc,
+               g.order_num, g.status, g.del_flag, g.create_by, g.create_time,
+               g.update_by, g.update_time, g.remark
+        from biz_condition_grade g
+        <where>
+            g.del_flag = '0'
+            <if test="gradeCode != null and gradeCode != ''">
+                and g.grade_code = #{gradeCode}
+            </if>
+            <if test="gradeName != null and gradeName != ''">
+                and g.grade_name like concat('%', #{gradeName}, '%')
+            </if>
+            <if test="status != null and status != ''">
+                and g.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and g.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and g.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by g.order_num asc, g.grade_id asc
+    </select>
+</mapper>

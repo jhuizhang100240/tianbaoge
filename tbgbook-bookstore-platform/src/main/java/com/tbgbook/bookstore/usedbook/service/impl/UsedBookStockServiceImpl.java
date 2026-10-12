@@ -16,10 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
+import com.tbgbook.bookstore.book.domain.Book;
+import com.tbgbook.bookstore.book.mapper.BookMapper;
 import com.tbgbook.bookstore.common.exception.BizErrors;
 import com.tbgbook.bookstore.common.support.ReferenceGuard;
 import com.tbgbook.bookstore.usedbook.domain.ConditionGrade;
 import com.tbgbook.bookstore.usedbook.domain.OffShelfRequest;
+import com.tbgbook.bookstore.usedbook.domain.RecycleItem;
 import com.tbgbook.bookstore.usedbook.domain.ShelfRequest;
 import com.tbgbook.bookstore.usedbook.domain.ShelfResult;
 import com.tbgbook.bookstore.usedbook.domain.UsedBook;
@@ -72,6 +75,8 @@ public class UsedBookStockServiceImpl extends ServiceImpl<UsedBookMapper, UsedBo
     private final ReferenceGuard referenceGuard;
 
     private final IUsedBookGradeService gradeService;
+
+    private final BookMapper bookMapper;
 
     @Override
     public List<UsedBook> selectUsedBookList(UsedBook usedBook)
@@ -134,15 +139,53 @@ public class UsedBookStockServiceImpl extends ServiceImpl<UsedBookMapper, UsedBo
         usedBook.setCreateTime(now);
         usedBook.setUpdateBy(currentUsername());
         usedBook.setUpdateTime(now);
-        baseMapper.insert(usedBook);
+        return insertWithGeneratedCodes(usedBook);
+    }
 
-        String sku = SKU_PREFIX + String.format("%08d", usedBook.getUsedBookId());
-        UsedBook patch = new UsedBook();
-        patch.setUsedBookId(usedBook.getUsedBookId());
-        patch.setSkuCode(sku);
-        baseMapper.updateById(patch);
-        usedBook.setSkuCode(sku);
-        return 1;
+    /**
+     * {@inheritDoc}
+     *
+     * <p>由回收验收合格明细生成副本：条码 / SKU 由服务端生成、落库为未上架；
+     * 若该 ISBN 已建档则回填作者 / 出版社 / 封面 / 原价，未建档则留空。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFromRecycle(RecycleItem item, Long recycleId, Long recycleItemId,
+            BigDecimal costPrice)
+    {
+        ConditionGrade grade = gradeService.requireGrade(item.getJudgeGradeId(), null);
+        Book book = bookMapper.selectOne(new LambdaQueryWrapper<Book>()
+                .eq(Book::getIsbn, item.getIsbn())
+                .last("limit 1"));
+        LocalDateTime now = LocalDateTime.now();
+        UsedBook usedBook = new UsedBook();
+        usedBook.setStoreId(DEFAULT_STORE_ID);
+        usedBook.setBarCode(generateBarCode());
+        usedBook.setSkuCode("");
+        usedBook.setRecycleId(recycleId);
+        usedBook.setRecycleItemId(recycleItemId);
+        usedBook.setBookId(book == null ? 0L : book.getBookId());
+        usedBook.setIsbn(item.getIsbn());
+        usedBook.setTitle(item.getTitle());
+        usedBook.setAuthor(book == null || book.getAuthor() == null ? "" : book.getAuthor());
+        usedBook.setPublisherName(
+                book == null || book.getPublisherName() == null ? "" : book.getPublisherName());
+        usedBook.setCoverUrl(book == null || book.getCoverUrl() == null ? "" : book.getCoverUrl());
+        usedBook.setConditionGradeId(grade.getGradeId());
+        usedBook.setConditionGradeName(grade.getGradeName());
+        usedBook.setOriginPrice(book == null ? BigDecimal.ZERO : nzd(book.getPrice()));
+        usedBook.setUsedPrice(BigDecimal.ZERO);
+        usedBook.setCostPrice(nzd(costPrice));
+        usedBook.setLocationId(0L);
+        usedBook.setStockStatus(UsedBook.STATUS_OFF_SHELF);
+        usedBook.setLockOrderId(0L);
+        usedBook.setRemark("回收验收生成（回收单ID=" + recycleId + "）");
+        usedBook.setCreateBy(currentUsername());
+        usedBook.setCreateTime(now);
+        usedBook.setUpdateBy(currentUsername());
+        usedBook.setUpdateTime(now);
+        insertWithGeneratedCodes(usedBook);
+        return usedBook.getUsedBookId();
     }
 
     /**
@@ -371,6 +414,19 @@ public class UsedBookStockServiceImpl extends ServiceImpl<UsedBookMapper, UsedBo
         long next = (maxId == null ? 0L : maxId) + 1;
         return BARCODE_PREFIX + LocalDate.now().format(DATE_FORMAT)
                 + String.format("%06d", next % 1000000);
+    }
+
+    /** 插入副本并按真实主键回填 SKU（条码需在插入前给出，故先预生成） */
+    private int insertWithGeneratedCodes(UsedBook usedBook)
+    {
+        baseMapper.insert(usedBook);
+        String sku = SKU_PREFIX + String.format("%08d", usedBook.getUsedBookId());
+        UsedBook patch = new UsedBook();
+        patch.setUsedBookId(usedBook.getUsedBookId());
+        patch.setSkuCode(sku);
+        baseMapper.updateById(patch);
+        usedBook.setSkuCode(sku);
+        return 1;
     }
 
     private String mergeRemark(String oldOne, String newOne)

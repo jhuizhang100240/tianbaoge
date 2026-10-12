@@ -163,4 +163,18 @@ public interface IMemberBalanceService
      */
     void refundBalance(Long memberId, BigDecimal principalPart, BigDecimal giftPart,
             String refNo, String principalRemark, String giftRemark);
+
+    /**
+     * [二手书回收结算] 回收款入储值账户：本金入账 + 写流水（{@code amount_type=1 充值}）
+     * + 同步会员冗余汇总。
+     *
+     * <p>阶段六步骤②新增（登记 A45）：回收结算选「储值账户」时调用；
+     * 不命中充值活动、不产生赠送金。
+     *
+     * @param memberId 会员ID
+     * @param amount   入账金额（必须 &gt; 0）
+     * @param refNo    关联单号（回收单号）
+     * @param remark   流水备注
+     */
+    void creditRecycleSettlement(Long memberId, BigDecimal amount, String refNo, String remark);
 }

@@ -74,4 +74,20 @@ public interface IUsedBookStockService
      * @return 影响行数
      */
     int offShelf(Long usedBookId, OffShelfRequest request);
+
+    /**
+     * [回收验收] 由回收合格明细生成二手书副本（阶段六步骤②，登记 A45）。
+     *
+     * <p>自动生成副本条码（BC+日期+流水）与 SKU（UB+8 位），落库为
+     * {@code stockStatus=4下架}（待上架），{@code costPrice=最终回收价}；
+     * 会员后续走 {@code /shelf} 定价上架。
+     *
+     * @param item     回收明细（提供 isbn / title / 判定成色 / 基准价）
+     * @param recycleId     来源回收单ID
+     * @param recycleItemId 来源回收明细ID
+     * @param costPrice     回收成本（最终回收价）
+     * @return 生成的副本ID
+     */
+    Long createFromRecycle(com.tbgbook.bookstore.usedbook.domain.RecycleItem item,
+            Long recycleId, Long recycleItemId, java.math.BigDecimal costPrice);
 }

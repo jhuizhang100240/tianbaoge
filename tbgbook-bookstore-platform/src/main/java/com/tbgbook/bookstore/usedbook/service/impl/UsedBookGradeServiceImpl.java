@@ -175,6 +175,10 @@ public class UsedBookGradeServiceImpl extends ServiceImpl<ConditionGradeMapper, 
     @Override
     public ConditionGrade requireGrade(Long gradeId, String gradeCode)
     {
+        if (gradeId == null && (gradeCode == null || gradeCode.isBlank()))
+        {
+            throw BizErrors.badRequest("成色等级未指定（gradeId 与 gradeCode 至少给一个）");
+        }
         ConditionGrade grade;
         if (gradeId != null)
         {

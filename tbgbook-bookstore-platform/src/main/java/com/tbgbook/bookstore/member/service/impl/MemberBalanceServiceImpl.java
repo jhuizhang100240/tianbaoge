@@ -454,6 +454,31 @@ public class MemberBalanceServiceImpl extends ServiceImpl<MemberBalanceMapper, M
         }
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>阶段六步骤②新增（A45）：二手书回收结算入储值账户 —— 本金入账，
+     * 流水记 {@code amount_type=1 充值}，并同步会员冗余汇总。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void creditRecycleSettlement(Long memberId, BigDecimal amount, String refNo,
+            String remark)
+    {
+        if (memberId == null || amount == null || amount.signum() <= 0)
+        {
+            throw BizErrors.badRequest("回收结算入账参数不完整");
+        }
+        referenceGuard.requireExists(memberMapper, memberId, "会员");
+        if (baseMapper.addBalance(memberId, amount, BigDecimal.ZERO) <= 0)
+        {
+            throw BizErrors.notFound("会员储值账户不存在，请先为该会员补建账户（会员ID=" + memberId + "）");
+        }
+        baseMapper.syncBalanceSummary(memberId);
+        MemberBalance after = selectByMemberId(memberId);
+        insertLog(memberId, 1, amount, after, refNo, remark);
+    }
+
     // ==================================================================
     // 内部
     // ==================================================================

@@ -33,6 +33,10 @@
         <springdoc.version>2.9.1</springdoc.version>
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <knife4j.version>4.5.0</knife4j.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
+        <spring-ai-alibaba.version>1.1.2.3</spring-ai-alibaba.version>
+        <redisson.version>3.52.0</redisson.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
 
         <aliyun.sdk.oss>3.17.4</aliyun.sdk.oss>
         <hutool-all.version>5.8.10</hutool-all.version>
@@ -47,6 +51,15 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring AI 版本仲裁：1.x 线 = Spring Boot 3；2.x = Spring Boot 4，勿混 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -117,6 +130,27 @@
                 <groupId>cn.idev.excel</groupId>
                 <artifactId>fastexcel</artifactId>
                 <version>${fastexcel.version}</version>
+            </dependency>
+
+            <!-- AI 能力层：百炼（通义千问）chat + embedding 模型客户端（阶段七，方案 A） -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+            </dependency>
+
+            <!-- Redisson 核心包（限流 RRateLimiter / 分布式锁 / 索引上下文）——不用 starter，避免接管现有 Lettuce -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+
+            <!-- PDF 文本抽取（知识库解析；3.x API：Loader.loadPDF） -->
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
             </dependency>
 
             <!-- velocity代码生成使用模板 -->

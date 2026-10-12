@@ -29,6 +29,24 @@
             <artifactId>tbgbook-oss</artifactId>
         </dependency>
 
+        <!-- AI 模型客户端：百炼（通义千问）chat + embedding（阶段七，方案 A） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+        </dependency>
+
+        <!-- Redisson 核心包：限流 / 分布式锁 / 索引上下文 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+        </dependency>
+
+        <!-- PDF 文本抽取（知识库解析 pdf） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+
         <!--Lombok-->
         <dependency>
             <groupId>org.projectlombok</groupId>

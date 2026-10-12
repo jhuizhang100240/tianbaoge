@@ -28,8 +28,9 @@ spring:
   # 文件上传限制（NFR-S13：类型白名单在 FileUploadUtils，大小限制在此）
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 20MB
+      # 知识库单文件契约上限 20MB（FR-4.7.6）；容器层留余量，由服务层给出确定的 413
+      max-file-size: 25MB
+      max-request-size: 30MB
 
 # 项目相关配置
 ruoyi:

@@ -28,7 +28,7 @@ spring:
     redis:
       password: <Redis口令>
 
-  # 阿里云百炼 API Key（阶段七启用）
+  # 阿里云百炼 API Key（阶段七启用；从百炼控制台创建，勿提交真实值）
   ai:
     dashscope:
       api-key: <百炼 API Key>

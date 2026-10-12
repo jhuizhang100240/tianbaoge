@@ -58,8 +58,9 @@ tbgbook-common  ←──  tbgbook-system  ←──  tbgbook-framework  ←─�
 | 定时任务 | Quartz（`tbgbook-quartz`） |
 | 接口文档 | springdoc 2.9.1 + `knife4j-openapi3-ui` 4.5.0（**仅 UI，不含 starter**） |
 | 工具库 | Hutool（全项目通用，**优先复用，不要另写等价实现**） |
-| Excel | 基线是 Apache POI（`poi-ooxml:5.5.1`）；**已采纳** 《技术选型方案》D-4 的 FastExcel 1.3.0（`cn.idev.excel:fastexcel`）✅ 2026-09-21。⚠️ 落地时必须同时把 `org.apache.poi:poi:5.5.1` 补进根 pom 的 `<dependencyManagement>`（现只管理了 `poi-ooxml`） |
+| Excel | 基线是 Apache POI（`poi` 与 `poi-ooxml` 均 5.5.1）；**已采纳** 《技术选型方案》D-4 的 FastExcel 1.3.0（`cn.idev.excel:fastexcel`）✅ 2026-09-21。✅ 2026-10-12 复核：根 pom 已同时管理 `poi` 与 `poi-ooxml` 5.5.1（版本严格一致） |
 | 对象存储 | 阿里云 OSS SDK 3.18.5 |
+| AI 能力 | Spring AI 1.1.8 + `spring-ai-alibaba-starter-dashscope` 1.1.2.3（chat/embedding **模型客户端**）；Qdrant v1.19（REST，自研客户端）；Redisson 3.52.0（核心包，限流与锁） |
 
 **依赖版本集中管理**：统一在根 `pom.xml` 的 `<dependencyManagement>` 声明，**子模块不得各自锁版本**。
 
@@ -76,11 +77,11 @@ tbgbook-common  ←──  tbgbook-system  ←──  tbgbook-framework  ←─�
 **D5 — Knife4j 是纯前端 UI**：只依赖 `knife4j-openapi3-ui`（声明在 `tbgbook-common/pom.xml`），**不含 starter**。原因：starter 的 `Knife4jOpenApiCustomizer` 调用的 `SpringDocConfigProperties.getGroupConfigs()` 自 springdoc 2.4.0 起返回类型由 `List` 改为 `Set`，与 2.9.1 二进制不兼容；降到 2.3.0 又与 Spring Boot 3.5.16 不兼容（`ControllerAdviceBean.<init>(Object)` 已在 Spring Framework 6.2 移除），而 knife4j 版本线止于 4.5.0。
 **后果**：`/doc.html` 页面与接口列表正常，但 knife4j 的**服务端增强端点不可用**（自定义文档、全局参数持久化、离线导出等页签 404）。**这是已知取舍，不要再试图换回 starter。**
 
-**D6 — AI 供应商按需求 §6.5**（2026-09-21 拍板）：**阿里云百炼（通义千问）+ Spring AI + Spring AI Alibaba**（`spring-ai-alibaba-starter-dashscope`）。RAG 编排、提示词模板、对话记忆、向量检索由框架提供，**不自行实现**。
-⚠️ 当前 `application-dev.yml` 与代码里仍是**百度千帆 `ernie-5.1` + `com.openai:openai-java`**，与本节冲突。**依赖清理时点已定（2026-09-21）：后端阶段一前置任务 0.1** —— 移除 `com.openai:openai-java:2.8.1`、`com.squareup.okhttp3:okhttp:4.12.0`、其 Kotlin stdlib 传递链（全仓库零调用）及 `<bitwalker.version>` 遗留 property，并改配置。详见 `../plan/待确认项.md` C1。
+**D6 — AI 供应商按需求 §6.5**（2026-09-21 拍板）：**阿里云百炼（通义千问）+ Spring AI + Spring AI Alibaba**（`spring-ai-alibaba-starter-dashscope`）。**框架只作模型客户端（chat/embedding）；RAG 编排、切片、检索、引用、灰度切换与提示词渲染由业务层自研**（2026-10-12 方案 A 修订，原「全部由框架提供」不再适用；原因：命中计数、引用溯源、重建期间灰度切换、`{{变量}}` DB 模板体系均非框架默认能力）。
+✅ **2026-10-12 复核**：依赖清理（阶段一前置任务 0.1）已完成 —— 代码与配置已切到百炼（`spring.ai.dashscope`），`openai-java` / `okhttp` / Kotlin 传递链与 `<bitwalker.version>` 均已移除。
 
-**D7 — RAG 检索链路取「方案 A」**（2026-09-21 拍板，原为 T-3 / T-5）：**检索在 Python 侧** —— Java 只存 `vector_id` 与元数据，文档解析 / 切片 / 向量化 / 重排全走 `ai-node` HTTP 接口；Java 侧**不引入** `milvus-sdk-java` 与 Tika。
-⚠️ **仍未定义的是 `ai-node` 的接口契约（T-5）**：文档解析 / 切片 / 向量化 / 重排各由谁承担、入参出参形态。**动 AI 域的检索部分之前必须先定义契约。**
+**D7 — RAG 检索链路取「方案 A（2026-10-12 版）：Java 单栈 + 百炼 + Qdrant」**（用户 2026-10-12 批准，取代 2026-09-21 的「检索在 Python 侧」版）：文档解析（PDFBox 3.0.8 + POI 5.5.1）、切片（500/50 取配置）、向量化（百炼 `text-embedding-v4`，每批 ≤10）、检索（Qdrant REST，自研客户端）全部在 `tbgbook-bookstore-platform` 的 `ai` 域内完成；**不建 `ai-node`**，**不引** `milvus-sdk-java` / Tika / Qdrant Java SDK。**T-3 / T-5 已关闭**。
+⚠️ Qdrant 为部署组件（开发与生产均为容器；开发实例 `192.168.100.168:6333`，v1.19.2），Java 侧只依赖 spring-web 的 `RestClient`；`vector_id` 语义 = Qdrant point UUID。设计与实施计划见 `../docs/superpowers/specs/2026-10-12-ai-domain-design.md` 与 `../docs/superpowers/plans/2026-10-12-ai-domain.md`。
 
 ## 四、分层与职责边界
 
@@ -156,7 +157,7 @@ tbgbook-common  ←──  tbgbook-system  ←──  tbgbook-framework  ←─�
 - **springdoc 扫描范围**：`springdoc.group-configs` 扫 `com.tbgbook.web.controller,com.tbgbook.bookstore` —— 业务包已在范围内，**新增域不用改配置**。
 - **不重复造轮子**：项目已有 Hutool、`StringUtils`、`DateUtils`、`FileUploadUtils`、`RedisCache`、`SecurityUtils`，**优先复用**。反例：项目里有 `DateUtils`，新功能又写一个 `DateUtil2`。
 - **新增依赖要有理由**：说明它解决什么问题、有没有更轻的替代、许可证是否合规。
-  ⚠️ 引入 Excel 增强库（FastExcel / EasyExcel）时**必须同时把 `org.apache.poi:poi` 加进根 pom 的 `<dependencyManagement>`** —— 当前只管理了 `poi-ooxml:5.5.1`，未管理 `poi`；而 POI 要求二者版本严格一致，否则会造出 `poi 5.4.1` + `poi-ooxml 5.5.1` 的错配组合。
+  ✅ **已落实（2026-10-12 复核）**：根 pom 的 `<dependencyManagement>` 已同时管理 `org.apache.poi:poi` 与 `poi-ooxml`（均 5.5.1，版本严格一致）—— FastExcel 传递的 `poi:5.4.1` 被中介到 5.5.1，无错配。
   ✅ **已采纳（2026-09-21）**：Excel 用 **FastExcel 1.3.0**（`cn.idev.excel:fastexcel`），落地时按上一条补齐 `poi` 管理项。
 
 ## 九、开发流程

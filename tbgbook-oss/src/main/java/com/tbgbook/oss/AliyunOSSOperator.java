@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -46,5 +47,35 @@ public class AliyunOSSOperator {
         }
 
         return endpoint.split("//")[0] + "//" + bucketName + "." + endpoint.split("//")[1] + "/" + objectName;
+    }
+
+    /**
+     * 按 {@link #upload} 返回的 URL 删除对象（知识库文档删除时清理存储残留）。
+     *
+     * <p>URL 形如 {@code https://<bucket>.<endpoint-host>/<objectName>}。
+     * 对象不存在时 OSS 删除同样返回成功（幂等）；调用方对删除失败一般只记警告。
+     *
+     * @param fileUrl 上传接口返回的完整 URL；为空时直接返回
+     */
+    public void deleteByUrl(String fileUrl) throws Exception {
+        if (fileUrl == null || fileUrl.isEmpty()) {
+            return;
+        }
+        URI uri = URI.create(fileUrl);
+        String host = uri.getHost();
+        if (host == null || uri.getPath() == null) {
+            return;
+        }
+        String bucketName = host.split("\\.")[0];
+        String objectName = uri.getPath().replaceFirst("^/", "");
+        OSS ossClient = new OSSClientBuilder().build(ossProperties.getEndpoint(),
+                CredentialsProviderFactory.newEnvironmentVariableCredentialsProvider());
+        try {
+            ossClient.deleteObject(bucketName, objectName);
+        } finally {
+            if (ossClient != null) {
+                ossClient.shutdown();
+            }
+        }
     }
 }

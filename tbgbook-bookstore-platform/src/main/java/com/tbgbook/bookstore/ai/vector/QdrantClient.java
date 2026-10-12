@@ -203,6 +203,27 @@ public class QdrantClient
     }
 
     /**
+     * 按 point id 批量删除（切片维护：单切片删除/内容修改时清理旧向量）。
+     */
+    public void deleteByPointIds(List<String> ids)
+    {
+        if (ids == null || ids.isEmpty())
+        {
+            return;
+        }
+        post("/collections/{collection}/points/delete?wait=true",
+                Map.of("points", ids), "delete points by id");
+    }
+
+    /**
+     * 按文档维度整体置 active（文档停用/启用时调用；启用侧由调用方结合当前代次判断）。
+     */
+    public void setPayloadActiveForDoc(long docId, boolean active)
+    {
+        setPayload(Map.of("must", List.of(match("docId", docId))), Map.of("active", active));
+    }
+
+    /**
      * 删除某文档除某代次外的全部点（切换完成后的尽力清理）。
      */
     public void deleteByDocExceptGen(long docId, long gen)

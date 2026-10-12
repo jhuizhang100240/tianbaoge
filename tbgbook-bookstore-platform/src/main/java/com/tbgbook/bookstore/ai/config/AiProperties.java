@@ -23,6 +23,19 @@ public class AiProperties
     /** Qdrant 连接配置 */
     private Qdrant qdrant = new Qdrant();
 
+    /** 知识库文件存储配置 */
+    private Kb kb = new Kb();
+
+    @Data
+    public static class Kb
+    {
+        /**
+         * 非空 = 原始文档落本机目录（开发环境无 OSS 凭据时用，url 形如 {@code local://kb/...}）；
+         * 为空 = 走 OSS（生产/测试）。
+         */
+        private String storageRoot = "";
+    }
+
     @Data
     public static class Qdrant
     {

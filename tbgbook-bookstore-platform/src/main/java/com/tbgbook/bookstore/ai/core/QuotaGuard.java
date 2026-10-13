@@ -97,6 +97,20 @@ public class QuotaGuard
         }
     }
 
+    /**
+     * 按场景取轻量模型（biz_ai_quota_config.scene_model_map；缺省返回 null = 用 starter 默认模型）。
+     */
+    public String sceneModel(String sceneKey)
+    {
+        AiQuotaConfig global = globalConfig();
+        if (global == null || global.getSceneModelMap() == null)
+        {
+            return null;
+        }
+        String model = global.getSceneModelMap().get(sceneKey);
+        return StringUtils.hasText(model) ? model : null;
+    }
+
     private void acquire(String key, int limit, RateIntervalUnit unit, String message)
     {
         RRateLimiter limiter = redissonClient.getRateLimiter(key);

@@ -40,6 +40,8 @@ public class IndexScanTask
 
     private final ISysConfigService configService;
 
+    private final com.tbgbook.bookstore.ai.core.AiGuard aiGuard;
+
     @Scheduled(fixedDelay = 30000L, initialDelay = 15000L)
     public void scan()
     {
@@ -50,6 +52,19 @@ public class IndexScanTask
                 .orderByAsc(KbDoc::getIndexStatus)
                 .orderByAsc(KbDoc::getDocId)
                 .last("limit " + scanBatch));
+        if (!aiGuard.enabled())
+        {
+            for (KbDoc candidate : candidates)
+            {
+                KbDoc update = new KbDoc();
+                update.setDocId(candidate.getDocId());
+                update.setIndexStatus(4);
+                update.setFailReason("AI 已全局停用");
+                kbDocMapper.updateById(update);
+            }
+            warnTimeoutDocs();
+            return;
+        }
         for (KbDoc candidate : candidates)
         {
             if (Integer.valueOf(2).equals(candidate.getIndexStatus())

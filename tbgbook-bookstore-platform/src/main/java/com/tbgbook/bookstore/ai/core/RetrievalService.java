@@ -64,7 +64,7 @@ public class RetrievalService
     {
         return retrieve(question,
                 intConfig("biz.ai.retrieval.top-k", DEFAULT_TOP_K),
-                doubleConfig("biz.ai.retrieval.min-score", DEFAULT_MIN_SCORE));
+                doubleConfig("biz.ai.retrieval.min-score", DEFAULT_MIN_SCORE), 1);
     }
 
     /**
@@ -72,11 +72,19 @@ public class RetrievalService
      */
     public List<RetrievalHit> retrieve(String question, int topK, double minScore)
     {
+        return retrieve(question, topK, minScore, 1);
+    }
+
+    /**
+     * 检索（指定调用场景，用于检索用 embedding 的调用日志归类）。
+     */
+    public List<RetrievalHit> retrieve(String question, int topK, double minScore, int scene)
+    {
         if (!StringUtils.hasText(question))
         {
             return new ArrayList<>();
         }
-        float[] vector = embeddingService.embedBatch(List.of(question)).getVectors().get(0);
+        float[] vector = embeddingService.embedBatch(List.of(question), scene).getVectors().get(0);
         List<QdrantHit> hits = qdrantClient.query(vector, Math.max(1, topK), minScore, STORE_ID);
         if (hits.isEmpty())
         {

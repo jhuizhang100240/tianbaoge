@@ -68,6 +68,14 @@ public class AiChatCore
 
     private final ObjectMapper objectMapper;
 
+    private final AiGuard aiGuard;
+
+    private final AiCircuitBreaker aiCircuitBreaker;
+
+    private final QuotaGuard quotaGuard;
+
+    private final CallLogRecorder callLogRecorder;
+
     /**
      * 处理一轮问答；增量文本通过 {@code onDelta} 回调（可空）。
      */
@@ -91,14 +99,21 @@ public class AiChatCore
             throw BizErrors.conflict("会话已结束");
         }
         Long memberId = request.getMemberId() != null ? request.getMemberId() : session.getMemberId();
+        aiGuard.ensureUsable(AiGuard.AiChannel.CHAT);
+        if (memberId != null && memberId > 0)
+        {
+            quotaGuard.checkMember(memberId);
+        }
         long started = System.currentTimeMillis();
         int memoryTurns = intConfig("biz.ai.chat.memory.turns", 10);
-        String history = loadHistory(request.getSessionId(), memoryTurns);
-
-        List<RetrievalHit> hits = retrievalService.retrieve(request.getQuestion());
-        double confidence = hits.isEmpty() ? 0D : hits.get(0).getScore();
+        int topK = intConfig("biz.ai.retrieval.top-k", 8);
         double minScore = doubleConfig("biz.ai.retrieval.min-score", 0.35D);
         int citeLimit = intConfig("biz.ai.retrieval.cite-limit", 5);
+        int scene = session.getScene() == null ? 1 : session.getScene();
+        String history = loadHistory(request.getSessionId(), memoryTurns);
+
+        List<RetrievalHit> hits = retrievalService.retrieve(request.getQuestion(), topK, minScore, scene);
+        double confidence = hits.isEmpty() ? 0D : hits.get(0).getScore();
 
         if (hits.isEmpty() || confidence < minScore)
         {
@@ -117,7 +132,7 @@ public class AiChatCore
                     null, 0, 0, 0, (int) (System.currentTimeMillis() - started));
         }
 
-        PromptResolution resolution = promptResolver.resolve(session.getScene() == null ? 1 : session.getScene(), memberId);
+        PromptResolution resolution = promptResolver.resolve(scene, memberId);
         Map<String, Object> variables = new HashMap<>();
         variables.put("question", request.getQuestion());
         variables.put("history", history);
@@ -171,9 +186,19 @@ public class AiChatCore
                     }
                 }
             }
+            aiCircuitBreaker.onSuccess(AiGuard.AiChannel.CHAT);
+            callLogRecorder.record(CallLogEntry.builder()
+                    .scene(scene).modelName(model).promptTokens(promptTokens).completionTokens(completionTokens)
+                    .latencyMs((int) (System.currentTimeMillis() - started)).success(true)
+                    .sessionId(request.getSessionId()).memberId(memberId).build());
         }
         catch (RuntimeException e)
         {
+            aiCircuitBreaker.onFailure(AiGuard.AiChannel.CHAT);
+            callLogRecorder.record(CallLogEntry.builder()
+                    .scene(scene).modelName(model).promptTokens(promptTokens).completionTokens(completionTokens)
+                    .latencyMs((int) (System.currentTimeMillis() - started)).success(false)
+                    .errorMsg(e.getMessage()).sessionId(request.getSessionId()).memberId(memberId).build());
             throw new AiUnavailableException("对话生成失败：" + e.getMessage(), e);
         }
         int latency = (int) (System.currentTimeMillis() - started);

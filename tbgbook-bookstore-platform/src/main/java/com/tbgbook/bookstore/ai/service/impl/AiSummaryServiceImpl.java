@@ -15,6 +15,8 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,6 +26,7 @@ import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.tbgbook.bookstore.ai.core.AiCircuitBreaker;
 import com.tbgbook.bookstore.ai.core.AiGuard;
 import com.tbgbook.bookstore.ai.core.AiUnavailableException;
+import com.tbgbook.bookstore.ai.vector.QdrantException;
 import com.tbgbook.bookstore.ai.core.CallLogEntry;
 import com.tbgbook.bookstore.ai.core.CallLogRecorder;
 import com.tbgbook.bookstore.ai.core.PromptResolution;
@@ -52,6 +55,8 @@ import lombok.RequiredArgsConstructor;
 public class AiSummaryServiceImpl extends ServiceImpl<AiSummaryMapper, AiSummary>
         implements IAiSummaryService
 {
+    private static final Logger log = LoggerFactory.getLogger(AiSummaryServiceImpl.class);
+
     private static final long STORE_ID = 1L;
 
     private static final int SCENE_SUMMARY = 3;
@@ -180,15 +185,25 @@ public class AiSummaryServiceImpl extends ServiceImpl<AiSummaryMapper, AiSummary
         int citeLimit = intConfig("biz.ai.retrieval.cite-limit", 5);
         String styleText = StringUtils.hasText(style) ? style : "简洁";
         List<Long> summaryIds = new ArrayList<>();
+        List<Map<String, Object>> failedBooks = new ArrayList<>();
+        boolean aiDown = false;
 
         for (Long bookId : bookIds)
         {
-            Book book = bookService.getById(bookId);
-            if (book == null)
+            if (aiDown)
             {
-                throw BizErrors.notFound("图书", bookId);
+                failedBooks.add(summaryFailure(bookId, "AI 服务不可用，已跳过"));
+                continue;
             }
-            List<RetrievalHit> hits = retrievalService.retrieve(
+            try
+            {
+                Book book = bookService.getById(bookId);
+                if (book == null)
+                {
+                    failedBooks.add(summaryFailure(bookId, "图书不存在"));
+                    continue;
+                }
+                List<RetrievalHit> hits = retrievalService.retrieve(
                     book.getTitle() + " " + (book.getIsbn() == null ? "" : book.getIsbn()),
                     topK, minScore, SCENE_SUMMARY);
             PromptResolution resolution = promptResolver.resolve(SCENE_SUMMARY, null);
@@ -259,16 +274,43 @@ public class AiSummaryServiceImpl extends ServiceImpl<AiSummaryMapper, AiSummary
             summary.setAuditBy("");
             summary.setRejectReason("");
             summary.setFailReason("");
-            save(summary);
-            summaryIds.add(summary.getSummaryId());
+                save(summary);
+                summaryIds.add(summary.getSummaryId());
+            }
+            catch (AiUnavailableException e)
+            {
+                aiDown = true;
+                failedBooks.add(summaryFailure(bookId, e.getMessage()));
+                log.warn("summary generate failed, bookId={}: {}", bookId, e.getMessage());
+            }
+            catch (QdrantException e)
+            {
+                // 检索依赖不可用：交回全局 503 降级（契约：AI 不可用 503 且不落行）
+                throw e;
+            }
+            catch (RuntimeException e)
+            {
+                failedBooks.add(summaryFailure(bookId, e.getMessage()));
+                log.warn("summary generate failed, bookId={}", bookId, e);
+            }
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("taskId", "sync-" + System.currentTimeMillis());
         result.put("totalCount", summaryIds.size());
         result.put("summaryIds", summaryIds);
-        result.put("failedCount", 0);
+        result.put("failedCount", failedBooks.size());
+        result.put("failedBookIds", failedBooks.stream().map(item -> item.get("bookId")).toList());
+        result.put("failures", failedBooks);
         return result;
+    }
+
+    private Map<String, Object> summaryFailure(Long bookId, String reason)
+    {
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("bookId", bookId);
+        failure.put("reason", reason == null ? "" : reason);
+        return failure;
     }
 
     @Override

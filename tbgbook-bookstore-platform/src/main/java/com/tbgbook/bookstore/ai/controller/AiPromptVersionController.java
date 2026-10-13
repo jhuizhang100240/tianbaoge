@@ -78,7 +78,7 @@ public class AiPromptVersionController extends BaseController
     /**
      * 发布版本（不带灰度参数 = 全量；带 = 灰度）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:prompt')")
+    @PreAuthorize("@ss.hasPermi('ai:prompt:publish')")
     @Log(title = "AI 提示词版本", businessType = BusinessType.UPDATE)
     @PostMapping("/{versionId}/publish")
     public AjaxResult publish(@PathVariable("versionId") Long versionId,
@@ -90,7 +90,7 @@ public class AiPromptVersionController extends BaseController
     /**
      * 回滚到指定历史版本（被回滚的原当前版本置 4 已回滚）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:prompt')")
+    @PreAuthorize("@ss.hasPermi('ai:prompt:rollback')")
     @Log(title = "AI 提示词版本", businessType = BusinessType.UPDATE)
     @PostMapping("/{versionId}/rollback")
     public AjaxResult rollback(@PathVariable("versionId") Long versionId,

@@ -19,6 +19,7 @@ import com.tbgbook.bookstore.ai.domain.AiQuotaConfig;
 import com.tbgbook.bookstore.ai.service.IAiCallLogService;
 import com.tbgbook.bookstore.ai.service.IAiQuotaConfigService;
 import com.tbgbook.bookstore.common.exception.BizErrors;
+import com.tbgbook.common.utils.SecurityUtils;
 import com.tbgbook.common.annotation.Log;
 import com.tbgbook.common.core.controller.BaseController;
 import com.tbgbook.common.core.domain.AjaxResult;
@@ -84,13 +85,18 @@ public class AiQuotaController extends BaseController
     /**
      * 成本监控（A-76；费用字段仅店长可见，靠权限串控制）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:quota')")
+    @PreAuthorize("@ss.hasPermi('ai:quota:list')")
     @GetMapping("/cost-summary")
     public AjaxResult costSummary(@RequestParam("startDate") String startDate,
             @RequestParam("endDate") String endDate,
             @RequestParam(value = "granularity", required = false, defaultValue = "day") String granularity,
             @RequestParam(value = "scene", required = false) Integer scene)
     {
+        // 契约：含费用数据，仅店长可见（403 无成本查看权限）
+        if (!SecurityUtils.hasRole("store_manager"))
+        {
+            throw BizErrors.forbidden("成本数据仅店长可见");
+        }
         try
         {
             LocalDate start = LocalDate.parse(startDate);

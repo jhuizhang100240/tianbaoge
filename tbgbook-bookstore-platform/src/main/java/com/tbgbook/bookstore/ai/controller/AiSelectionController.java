@@ -37,7 +37,7 @@ public class AiSelectionController extends BaseController
     /**
      * 智能选品与补货建议（AI 不可用 503）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:selection')")
+    @PreAuthorize("@ss.hasPermi('ai:selection:list')")
     @GetMapping("/suggest")
     public AjaxResult suggest(@RequestParam(value = "suggestType", required = false) Integer suggestType,
             @RequestParam(value = "limit", required = false, defaultValue = "20") Integer limit)
@@ -48,7 +48,7 @@ public class AiSelectionController extends BaseController
     /**
      * 采纳建议并转采购入库单草稿（不依赖 AI）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:selection')")
+    @PreAuthorize("@ss.hasPermi('ai:selection:adopt')")
     @Log(title = "AI 选品采纳", businessType = BusinessType.INSERT)
     @PostMapping("/adopt")
     @SuppressWarnings("unchecked")

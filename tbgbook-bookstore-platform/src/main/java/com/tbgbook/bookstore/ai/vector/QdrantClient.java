@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.ResourceAccessException;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -261,6 +262,10 @@ public class QdrantClient
         {
             throw toQdrantException(action, e);
         }
+        catch (ResourceAccessException e)
+        {
+            throw toQdrantException(action, e);
+        }
     }
 
     private void put(String uri, Object body, String action)
@@ -272,6 +277,10 @@ public class QdrantClient
                     .retrieve().toBodilessEntity();
         }
         catch (RestClientResponseException e)
+        {
+            throw toQdrantException(action, e);
+        }
+        catch (ResourceAccessException e)
         {
             throw toQdrantException(action, e);
         }
@@ -287,6 +296,10 @@ public class QdrantClient
             return node == null ? objectMapper.createObjectNode() : node;
         }
         catch (RestClientResponseException e)
+        {
+            throw toQdrantException(action, e);
+        }
+        catch (ResourceAccessException e)
         {
             throw toQdrantException(action, e);
         }
@@ -306,6 +319,20 @@ public class QdrantClient
         }
         return new QdrantException("qdrant " + action + " failed: HTTP "
                 + e.getStatusCode().value() + " " + body, e);
+    }
+
+    /**
+     * 连接失败 / 读超时等 IO 异常同样归一到 {@link QdrantException}，
+     * 否则会以普通 RuntimeException 冒泡成 500，绕过 503 降级映射。
+     */
+    private QdrantException toQdrantException(String action, ResourceAccessException e)
+    {
+        String message = e.getMessage() == null ? "" : e.getMessage();
+        if (message.length() > ERROR_BODY_LIMIT)
+        {
+            message = message.substring(0, ERROR_BODY_LIMIT) + "...";
+        }
+        return new QdrantException("qdrant " + action + " failed: " + message, e);
     }
 
     private String collection()

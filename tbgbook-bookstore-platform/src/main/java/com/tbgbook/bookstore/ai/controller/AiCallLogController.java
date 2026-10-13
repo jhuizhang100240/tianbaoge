@@ -1,5 +1,7 @@
 package com.tbgbook.bookstore.ai.controller;
 
+import java.util.List;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +14,7 @@ import com.tbgbook.bookstore.ai.service.IAiCallLogService;
 import com.tbgbook.common.core.controller.BaseController;
 import com.tbgbook.common.core.domain.AjaxResult;
 import com.tbgbook.common.core.page.TableDataInfo;
+import com.tbgbook.common.utils.SecurityUtils;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,13 +36,40 @@ public class AiCallLogController extends BaseController
     public TableDataInfo list(AiCallLog aiCallLog)
     {
         startPage();
-        return getDataTable(aiCallLogService.selectAiCallLogList(aiCallLog));
+        List<AiCallLog> list = aiCallLogService.selectAiCallLogList(aiCallLog);
+        if (!costVisible())
+        {
+            list.forEach(this::maskCost);
+        }
+        return getDataTable(list);
     }
 
     @PreAuthorize("@ss.hasPermi('ai:quota:list')")
     @GetMapping("/{logId}")
     public AjaxResult getInfo(@PathVariable("logId") Long logId)
     {
-        return success(aiCallLogService.getById(logId));
+        AiCallLog log = aiCallLogService.getById(logId);
+        if (!costVisible())
+        {
+            maskCost(log);
+        }
+        return success(log);
+    }
+
+    /**
+     * 费用与供应商错误明细仅店长（或 admin）可见（FR-4.7.10；NFR-S2 接口级保护）。
+     */
+    private boolean costVisible()
+    {
+        return SecurityUtils.hasRole("store_manager");
+    }
+
+    private void maskCost(AiCallLog log)
+    {
+        if (log != null)
+        {
+            log.setCost(null);
+            log.setErrorMsg(null);
+        }
     }
 }

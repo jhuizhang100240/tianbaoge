@@ -77,7 +77,7 @@ public class AiSessionController extends BaseController
     /**
      * 转人工（低置信度一键转人工 / 用户主动 / 兜底）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:session')")
+    @PreAuthorize("@ss.hasPermi('ai:session:transfer')")
     @Log(title = "AI 会话", businessType = BusinessType.UPDATE)
     @PostMapping("/{sessionId}/transfer")
     public AjaxResult transfer(@PathVariable("sessionId") Long sessionId,
@@ -89,7 +89,7 @@ public class AiSessionController extends BaseController
     /**
      * 结束会话。
      */
-    @PreAuthorize("@ss.hasPermi('ai:session')")
+    @PreAuthorize("@ss.hasPermi('ai:session:close')")
     @Log(title = "AI 会话", businessType = BusinessType.UPDATE)
     @PostMapping("/{sessionId}/close")
     public AjaxResult close(@PathVariable("sessionId") Long sessionId)

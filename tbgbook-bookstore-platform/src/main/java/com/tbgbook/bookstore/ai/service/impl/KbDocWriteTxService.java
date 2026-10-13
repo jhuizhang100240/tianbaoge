@@ -11,8 +11,10 @@ import com.tbgbook.bookstore.ai.domain.KbUploadResult;
 import com.tbgbook.bookstore.ai.mapper.KbChunkMapper;
 import com.tbgbook.bookstore.ai.mapper.KbDocMapper;
 import com.tbgbook.bookstore.ai.service.IKbChunkService;
+import com.tbgbook.bookstore.common.exception.BizErrors;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -54,6 +56,16 @@ public class KbDocWriteTxService
     @Transactional(rollbackFor = Exception.class)
     public KbUploadResult stageRebuild(KbDoc doc, List<KbChunk> chunks, int chunkSize, int chunkOverlap)
     {
+        // 原子认领：仅「已完成(3)/失败(4)」可进入重建，并发 reindex 只有一个胜出
+        int claimed = kbDocMapper.update(null, new LambdaUpdateWrapper<KbDoc>()
+                .eq(KbDoc::getDocId, doc.getDocId())
+                .in(KbDoc::getIndexStatus, 3, 4)
+                .set(KbDoc::getIndexStatus, 1)
+                .set(KbDoc::getFailReason, ""));
+        if (claimed == 0)
+        {
+            throw BizErrors.conflict("文档正在索引中");
+        }
         for (KbChunk chunk : chunks)
         {
             chunk.setDocId(doc.getDocId());

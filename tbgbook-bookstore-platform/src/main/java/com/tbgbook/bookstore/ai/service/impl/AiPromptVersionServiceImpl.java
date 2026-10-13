@@ -107,9 +107,15 @@ public class AiPromptVersionServiceImpl extends ServiceImpl<AiPromptVersionMappe
         {
             throw BizErrors.notFound("版本", version.getVersionId());
         }
+        // 已发布/灰度/回滚版本不可编辑：只能改草稿，防止绕过 publish/rollback 治理
+        if (!Integer.valueOf(1).equals(existing.getStatus()))
+        {
+            throw BizErrors.ruleViolated("只能编辑草稿版本（当前状态 " + existing.getStatus() + "）");
+        }
         String content = StringUtils.hasText(version.getContent()) ? version.getContent() : existing.getContent();
         List<String> variables = version.getVariables() != null ? version.getVariables() : existing.getVariables();
         validateVariables(content, variables);
+        version.setVersionNo(null);
         version.setTemplateId(null);
         version.setStatus(null);
         version.setAbSatisfaction(null);

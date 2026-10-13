@@ -74,6 +74,8 @@ public class AiChatCore
 
     private final QuotaGuard quotaGuard;
 
+    private final SensitiveMasker sensitiveMasker;
+
     private final CallLogRecorder callLogRecorder;
 
     /**
@@ -102,7 +104,7 @@ public class AiChatCore
         aiGuard.ensureUsable(AiGuard.AiChannel.CHAT);
         if (memberId != null && memberId > 0)
         {
-            quotaGuard.checkMember(memberId);
+            quotaGuard.checkMember(memberId, "chat");
         }
         long started = System.currentTimeMillis();
         int memoryTurns = intConfig("biz.ai.chat.memory.turns", 10);
@@ -295,7 +297,7 @@ public class AiChatCore
         AiMessage message = new AiMessage();
         message.setSessionId(request.getSessionId());
         message.setRole(2);
-        message.setContent(content);
+        message.setContent(sensitiveMasker.mask(content));
         message.setConfidence(BigDecimal.valueOf(confidence).setScale(2, RoundingMode.HALF_UP));
         message.setIsLowConfidence(lowConfidence);
         message.setIsFallback(fallback);

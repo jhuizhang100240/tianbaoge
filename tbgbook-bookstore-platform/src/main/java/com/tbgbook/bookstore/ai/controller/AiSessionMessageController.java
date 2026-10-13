@@ -54,7 +54,7 @@ public class AiSessionMessageController extends BaseController
     /**
      * 人工客服回复（role=3，须已转人工且未结束）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:session')")
+    @PreAuthorize("@ss.hasPermi('ai:session:message')")
     @Log(title = "AI 会话消息", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult sendManual(@RequestBody ManualReplyRequest request)

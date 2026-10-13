@@ -5,10 +5,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -28,6 +30,7 @@ import com.tbgbook.bookstore.ai.domain.KbUploadRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadResult;
 import com.tbgbook.bookstore.ai.index.Chunker;
 import com.tbgbook.bookstore.ai.index.DocumentParserRegistry;
+import com.tbgbook.bookstore.ai.index.IndexContextStore;
 import com.tbgbook.bookstore.ai.mapper.KbChunkMapper;
 import com.tbgbook.bookstore.ai.mapper.KbDocMapper;
 import com.tbgbook.bookstore.ai.service.IKbDocService;
@@ -74,12 +77,18 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
 
     private final RedissonClient redissonClient;
 
-    /** 解析专用线程池：把 CPU 密集解析从 Web 线程隔离，并支撑超时取消 */
-    private final ExecutorService parseExecutor = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "kb-parse");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final IndexContextStore indexContextStore;
+
+    /**
+     * 解析专用线程池：固定 2 线程 + 有界队列，队列满直接拒绝（429），
+     * 防止超大文档把解析队列堆满拖垮上传接口；CPU 密集解析与 Web 线程隔离。
+     */
+    private final ExecutorService parseExecutor = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(32), runnable -> {
+                Thread thread = new Thread(runnable, "kb-parse");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     @PreDestroy
     public void shutdownParseExecutor()
@@ -131,11 +140,20 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         // 存储（OSS 或本地目录）在事务外
         String fileUrl = kbFileStorage.store(content, request.getFile().getOriginalFilename());
 
-        // 同步解析 + 切片（受超时约束）
-        ParsedText parsed = parseWithTimeout(fileType, content, chunkSize, chunkOverlap);
-        if (!StringUtils.hasText(parsed.text()) || parsed.chunks().isEmpty())
+        // 同步解析 + 切片（受超时约束）；解析失败回滚已存对象，避免存储残留
+        ParsedText parsed;
+        try
         {
-            throw BizErrors.ruleViolated("文档内容为空或无法解析");
+            parsed = parseWithTimeout(fileType, content, chunkSize, chunkOverlap);
+            if (!StringUtils.hasText(parsed.text()) || parsed.chunks().isEmpty())
+            {
+                throw BizErrors.ruleViolated("文档内容为空或无法解析");
+            }
+        }
+        catch (RuntimeException e)
+        {
+            kbFileStorage.delete(fileUrl);
+            throw e;
         }
 
         KbDoc kbDoc = new KbDoc();
@@ -156,7 +174,15 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         kbDoc.setFailReason("");
         kbDoc.setStatus(1);
 
-        return writeTxService.persist(kbDoc, buildChunks(parsed.chunks()));
+        try
+        {
+            return writeTxService.persist(kbDoc, buildChunks(parsed.chunks()));
+        }
+        catch (RuntimeException e)
+        {
+            kbFileStorage.delete(fileUrl);
+            throw e;
+        }
     }
 
     @Override
@@ -194,6 +220,9 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
             return new KbUploadResult(docId, doc.getIndexStatus(), doc.getChunkTotal());
         }
 
+        // 清掉上一代索引上下文：重建失败后扫描不会复用旧 ctx 处理旧切片（Important 4）
+        indexContextStore.clear(docId);
+
         byte[] content = kbFileStorage.read(doc.getFileUrl());
         ParsedText parsed = parseWithTimeout(doc.getFileType(), content, chunkSize, chunkOverlap);
         if (!StringUtils.hasText(parsed.text()) || parsed.chunks().isEmpty())
@@ -224,6 +253,10 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         }
         kbDoc.setDocId(null);
         kbDoc.setStoreId(STORE_ID);
+        // 存储字段服务端只读：手动新增不允许带 fileUrl/fileType/fileSize（防本地路径穿越）
+        kbDoc.setFileUrl(null);
+        kbDoc.setFileType(null);
+        kbDoc.setFileSize(null);
         kbDoc.setChunkSize(chunkSize);
         kbDoc.setChunkOverlap(chunkOverlap);
         kbDoc.setChunkTotal(0);
@@ -264,6 +297,9 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         // 只允许契约内的可写字段；其余显式清空避免客户端注入
         kbDoc.setStoreId(null);
         kbDoc.setVersion(null);
+        kbDoc.setFileUrl(null);
+        kbDoc.setFileType(null);
+        kbDoc.setFileSize(null);
         kbDoc.setChunkTotal(null);
         kbDoc.setChunkOk(null);
         kbDoc.setChunkFailed(null);
@@ -291,8 +327,9 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
                     }
                     else
                     {
-                        log.warn("current gen missing for doc {}; skip qdrant re-enable, retrieval recheck covers it",
-                                kbDoc.getDocId());
+                        // Redis 丢失代次：按 docId 整体恢复可见（激活切换后同文档仅存当前代）
+                        log.warn("current gen missing for doc {}; re-enable by docId filter", kbDoc.getDocId());
+                        qdrantClient.setPayloadActiveForDoc(kbDoc.getDocId(), true);
                     }
                 }
             }
@@ -395,10 +432,18 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
     private ParsedText parseWithTimeout(String fileType, byte[] content, int chunkSize, int chunkOverlap)
     {
         int timeoutSeconds = intConfig("biz.ai.kb.parse.timeout.seconds", 60);
-        CompletableFuture<ParsedText> future = CompletableFuture.supplyAsync(() -> {
-            String text = parserRegistry.parse(fileType, content);
-            return new ParsedText(text, chunker.chunk(text, chunkSize, chunkOverlap));
-        }, parseExecutor);
+        CompletableFuture<ParsedText> future;
+        try
+        {
+            future = CompletableFuture.supplyAsync(() -> {
+                String text = parserRegistry.parse(fileType, content);
+                return new ParsedText(text, chunker.chunk(text, chunkSize, chunkOverlap));
+            }, parseExecutor);
+        }
+        catch (RejectedExecutionException e)
+        {
+            throw BizErrors.tooManyRequests("文档解析请求过多，请稍后重试");
+        }
         try
         {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);

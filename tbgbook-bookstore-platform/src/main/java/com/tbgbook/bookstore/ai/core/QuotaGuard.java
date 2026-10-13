@@ -53,8 +53,26 @@ public class QuotaGuard
 
     public void checkMember(long memberId)
     {
-        int hourly = intConfig("biz.ai.rate.hourly", DEFAULT_HOURLY);
-        int daily = intConfig("biz.ai.rate.daily", DEFAULT_DAILY);
+        checkMember(memberId, null);
+    }
+
+    /**
+     * 会员限流：按契约优先级解析 单会员(scope=2) &gt; 场景(scope=3) &gt; 全局(scope=1)
+     * &gt; {@code sys_config} 默认值；停用行不参与。
+     */
+    public void checkMember(long memberId, String scene)
+    {
+        AiQuotaConfig memberConfig = resolve(2, String.valueOf(memberId));
+        AiQuotaConfig sceneConfig = scene == null ? null : resolve(3, scene);
+        AiQuotaConfig global = globalConfig();
+        int hourly = firstPositive(intConfig("biz.ai.rate.hourly", DEFAULT_HOURLY),
+                memberConfig == null ? null : memberConfig.getHourlyLimit(),
+                sceneConfig == null ? null : sceneConfig.getHourlyLimit(),
+                global == null ? null : global.getHourlyLimit());
+        int daily = firstPositive(intConfig("biz.ai.rate.daily", DEFAULT_DAILY),
+                memberConfig == null ? null : memberConfig.getDailyLimit(),
+                sceneConfig == null ? null : sceneConfig.getDailyLimit(),
+                global == null ? null : global.getDailyLimit());
         acquire(AiRedisKeys.rate("member-hour", String.valueOf(memberId), "hour"),
                 hourly, RateIntervalUnit.HOURS, "已达本小时 AI 使用上限");
         acquire(AiRedisKeys.rate("member-day", String.valueOf(memberId), "day"),
@@ -103,13 +121,12 @@ public class QuotaGuard
      */
     public String sceneModel(String sceneKey)
     {
-        AiQuotaConfig global = globalConfig();
-        if (global == null || global.getSceneModelMap() == null)
+        String model = modelOf(resolve(3, sceneKey), sceneKey);
+        if (model != null)
         {
-            return null;
+            return model;
         }
-        String model = global.getSceneModelMap().get(sceneKey);
-        return StringUtils.hasText(model) ? model : null;
+        return modelOf(globalConfig(), sceneKey);
     }
 
     private void acquire(String key, int limit, RateIntervalUnit unit, String message)
@@ -136,10 +153,42 @@ public class QuotaGuard
 
     private AiQuotaConfig globalConfig()
     {
+        return resolve(1, "");
+    }
+
+    /**
+     * 按范围取生效配置（status='0' 正常；停用行不参与）。
+     */
+    private AiQuotaConfig resolve(int scope, String scopeValue)
+    {
         return quotaConfigMapper.selectOne(new LambdaQueryWrapper<AiQuotaConfig>()
                 .eq(AiQuotaConfig::getStoreId, STORE_ID)
-                .eq(AiQuotaConfig::getScope, 1)
+                .eq(AiQuotaConfig::getScope, scope)
+                .eq(AiQuotaConfig::getScopeValue, scopeValue)
+                .eq(AiQuotaConfig::getStatus, "0")
                 .last("limit 1"));
+    }
+
+    private String modelOf(AiQuotaConfig config, String sceneKey)
+    {
+        if (config == null || config.getSceneModelMap() == null)
+        {
+            return null;
+        }
+        String model = config.getSceneModelMap().get(sceneKey);
+        return StringUtils.hasText(model) ? model : null;
+    }
+
+    private int firstPositive(int fallback, Integer... values)
+    {
+        for (Integer value : values)
+        {
+            if (value != null && value > 0)
+            {
+                return value;
+            }
+        }
+        return fallback;
     }
 
     private int intConfig(String key, int defaultValue)

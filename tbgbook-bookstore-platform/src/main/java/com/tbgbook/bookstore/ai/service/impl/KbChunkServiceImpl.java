@@ -90,6 +90,7 @@ public class KbChunkServiceImpl extends ServiceImpl<KbChunkMapper, KbChunk> impl
         chunk.setHitCount(0);
         save(chunk);
         syncDocTotal(chunk.getDocId());
+        markDocPending(chunk.getDocId());
     }
 
     @Override
@@ -105,7 +106,9 @@ public class KbChunkServiceImpl extends ServiceImpl<KbChunkMapper, KbChunk> impl
             throw BizErrors.notFound("切片", chunk.getChunkId());
         }
         chunk.setDocId(null);
-        if (StringUtils.hasText(chunk.getContent()) && !chunk.getContent().equals(existing.getContent()))
+        boolean contentChanged = StringUtils.hasText(chunk.getContent())
+                && !chunk.getContent().equals(existing.getContent());
+        if (contentChanged)
         {
             deleteVector(existing.getVectorId());
             chunk.setCharCount(chunk.getContent().length());
@@ -124,6 +127,10 @@ public class KbChunkServiceImpl extends ServiceImpl<KbChunkMapper, KbChunk> impl
         chunk.setHitCount(null);
         updateById(chunk);
         syncDocTotal(existing.getDocId());
+        if (contentChanged)
+        {
+            markDocPending(existing.getDocId());
+        }
     }
 
     @Override
@@ -177,6 +184,18 @@ public class KbChunkServiceImpl extends ServiceImpl<KbChunkMapper, KbChunk> impl
         KbDoc update = new KbDoc();
         update.setDocId(docId);
         update.setChunkTotal(Math.toIntExact(total));
+        kbDocMapper.updateById(update);
+    }
+
+    /**
+     * 手工新增/改动的切片需要重新向量化：把文档置回待处理，交给索引扫描领取。
+     */
+    private void markDocPending(Long docId)
+    {
+        KbDoc update = new KbDoc();
+        update.setDocId(docId);
+        update.setIndexStatus(1);
+        update.setFailReason("");
         kbDocMapper.updateById(update);
     }
 }

@@ -97,7 +97,7 @@ public class KbChunkController extends BaseController
     /**
      * 重试向量化（仅失败切片；成功后若文档无剩余失败则自动激活）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @PreAuthorize("@ss.hasPermi('ai:kb:retry')")
     @Log(title = "知识库切片", businessType = BusinessType.UPDATE)
     @PostMapping("/{chunkId}/retry")
     public AjaxResult retry(@PathVariable("chunkId") Long chunkId)

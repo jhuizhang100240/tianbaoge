@@ -76,7 +76,7 @@ public class AiQaController extends BaseController
     /**
      * 标注问答质量（A-73 一键标注入口；category=1 时可带 relatedDocId）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:qa')")
+    @PreAuthorize("@ss.hasPermi('ai:qa:annotate')")
     @Log(title = "AI 问答标注", businessType = BusinessType.UPDATE)
     @PostMapping("/annotate")
     public AjaxResult annotate(@RequestBody AiAnnotation request)

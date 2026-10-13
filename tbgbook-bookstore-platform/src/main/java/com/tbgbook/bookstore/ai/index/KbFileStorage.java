@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import com.tbgbook.bookstore.ai.config.AiProperties;
 import com.tbgbook.bookstore.common.exception.BizErrors;
+import com.tbgbook.common.exception.ServiceException;
 import com.tbgbook.oss.AliyunOSSOperator;
 
 import lombok.RequiredArgsConstructor;
@@ -74,11 +75,7 @@ public class KbFileStorage
         {
             if (fileUrl.startsWith(LOCAL_PREFIX))
             {
-                String root = properties.getKb().getStorageRoot();
-                if (StringUtils.hasText(root))
-                {
-                    Files.deleteIfExists(Paths.get(root, fileUrl.substring(LOCAL_PREFIX.length())));
-                }
+                Files.deleteIfExists(localPath(fileUrl));
             }
             else
             {
@@ -104,16 +101,38 @@ public class KbFileStorage
         {
             if (fileUrl.startsWith(LOCAL_PREFIX))
             {
-                String root = properties.getKb().getStorageRoot();
-                return Files.readAllBytes(Paths.get(root, fileUrl.substring(LOCAL_PREFIX.length())));
+                return Files.readAllBytes(localPath(fileUrl));
             }
             return ossOperator.download(fileUrl);
+        }
+        catch (ServiceException e)
+        {
+            throw e;
         }
         catch (Exception e)
         {
             log.error("read kb file failed: {}", fileUrl, e);
             throw BizErrors.serverError("原始文件读取失败，无法重建索引");
         }
+    }
+
+    /**
+     * 解析本地存储 URL 对应的真实路径，并强制约束在 storage-root 之内（防路径穿越）。
+     */
+    private Path localPath(String fileUrl)
+    {
+        String root = properties.getKb().getStorageRoot();
+        if (!StringUtils.hasText(root))
+        {
+            throw BizErrors.ruleViolated("本地文档存储未配置，无法访问原始文件");
+        }
+        Path rootPath = Paths.get(root).toAbsolutePath().normalize();
+        Path target = rootPath.resolve(fileUrl.substring(LOCAL_PREFIX.length())).normalize();
+        if (!target.startsWith(rootPath))
+        {
+            throw BizErrors.ruleViolated("非法的文档存储路径");
+        }
+        return target;
     }
 
     private String storeLocal(String root, byte[] content, String originalFilename)

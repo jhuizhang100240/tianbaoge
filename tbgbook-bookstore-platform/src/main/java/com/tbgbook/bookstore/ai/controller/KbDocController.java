@@ -100,7 +100,7 @@ public class KbDocController extends BaseController
     /**
      * 上传文档：multipart 校验 → OSS 存储 → 同步解析+切片 → 落库待向量化。
      */
-    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @PreAuthorize("@ss.hasPermi('ai:kb:upload')")
     @Log(title = "知识库文档", businessType = BusinessType.INSERT)
     @PostMapping("/upload")
     public AjaxResult upload(KbUploadRequest request)
@@ -111,7 +111,7 @@ public class KbDocController extends BaseController
     /**
      * 查看文档切片（A-72）：列表 + 汇总（成功/失败/零命中）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @PreAuthorize("@ss.hasPermi('ai:kb:list')")
     @GetMapping("/{docId}/chunks")
     public AjaxResult chunks(@PathVariable("docId") Long docId,
             @RequestParam(value = "vectorStatus", required = false) Integer vectorStatus,
@@ -126,7 +126,7 @@ public class KbDocController extends BaseController
     /**
      * 重建索引（可覆盖切片参数；重建期间旧索引仍可检索，完成时灰度切换）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @PreAuthorize("@ss.hasPermi('ai:kb:reindex')")
     @Log(title = "知识库文档", businessType = BusinessType.UPDATE)
     @PostMapping("/{docId}/reindex")
     public AjaxResult reindex(@PathVariable("docId") Long docId,

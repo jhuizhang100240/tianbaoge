@@ -77,7 +77,7 @@ public class AiPromptController extends BaseController
     /**
      * 调整灰度方式/比例/会员群（不改变版本内容）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:prompt')")
+    @PreAuthorize("@ss.hasPermi('ai:prompt:gray')")
     @Log(title = "AI 提示词模板", businessType = BusinessType.UPDATE)
     @PostMapping("/{templateId}/gray")
     public AjaxResult gray(@PathVariable("templateId") Long templateId, @RequestBody GrayAdjustRequest request)

@@ -81,7 +81,7 @@ public class AiRecommendController extends BaseController
     /**
      * 设置推荐位置顶（整体替换；含下架图书整体拒绝）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:recommend')")
+    @PreAuthorize("@ss.hasPermi('ai:recommend:pins')")
     @Log(title = "AI 推荐位", businessType = BusinessType.UPDATE)
     @PutMapping("/{configId}/pins")
     public AjaxResult replacePins(@PathVariable("configId") Long configId,
@@ -93,7 +93,7 @@ public class AiRecommendController extends BaseController
     /**
      * 推荐位效果预览（区分算法/人工通道；AI 停用时按兜底策略并置 fallbackUsed）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:recommend')")
+    @PreAuthorize("@ss.hasPermi('ai:recommend:list')")
     @GetMapping("/{configId}/preview")
     public AjaxResult preview(@PathVariable("configId") Long configId)
     {

@@ -78,7 +78,7 @@ public class AiSummaryController extends BaseController
     /**
      * 生成图书摘要/书评（结果一律待审核；AI 不可用 503 且不落行）。
      */
-    @PreAuthorize("@ss.hasPermi('ai:summary')")
+    @PreAuthorize("@ss.hasPermi('ai:summary:generate')")
     @Log(title = "AI 图书摘要", businessType = BusinessType.INSERT)
     @PostMapping("/generate")
     public AjaxResult generate(@RequestBody Map<String, Object> request)

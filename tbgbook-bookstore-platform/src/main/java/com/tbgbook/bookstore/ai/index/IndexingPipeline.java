@@ -73,14 +73,15 @@ public class IndexingPipeline
      */
     public void process(long docId)
     {
+        String token = java.util.UUID.randomUUID().toString();
         RBucket<String> lock = redissonClient.getBucket(AiRedisKeys.indexLock(docId));
-        if (!lock.trySet("1", LOCK_MINUTES, TimeUnit.MINUTES))
+        if (!lock.trySet(token, LOCK_MINUTES, TimeUnit.MINUTES))
         {
             return;
         }
         try
         {
-            doProcess(docId);
+            doProcess(docId, lock);
         }
         catch (Exception e)
         {
@@ -89,7 +90,8 @@ public class IndexingPipeline
         }
         finally
         {
-            lock.delete();
+            // 只删自己持有的锁：若锁已过期并被他人取得，不得误删
+            lock.compareAndSet(token, null);
         }
     }
 
@@ -165,7 +167,7 @@ public class IndexingPipeline
 
     // ------------------------------------------------------------------
 
-    private void doProcess(long docId)
+    private void doProcess(long docId, RBucket<String> lock)
     {
         KbDoc doc = kbDocMapper.selectById(docId);
         if (doc == null)
@@ -190,6 +192,8 @@ public class IndexingPipeline
         boolean aborted = false;
         for (int from = 0; from < ids.size() && !aborted; from += batchSize)
         {
+            // 续期：长时间索引期间锁不应过期（Important 4）
+            lock.expire(LOCK_MINUTES, TimeUnit.MINUTES);
             List<Long> batchIds = ids.subList(from, Math.min(from + batchSize, ids.size()));
             List<KbChunk> batch = kbChunkMapper.selectBatchIds(batchIds);
             batch.removeIf(item -> Integer.valueOf(1).equals(item.getVectorStatus()));
@@ -265,6 +269,15 @@ public class IndexingPipeline
         }
         catch (QdrantException e)
         {
+            // 切换分两步，第二步失败会留下新旧两代同时 active；回滚新代可见性，避免错引用
+            try
+            {
+                qdrantClient.setPayloadActive(docId, context.getGen(), false);
+            }
+            catch (QdrantException rollbackError)
+            {
+                log.warn("rollback new gen activation failed, docId={}", docId, rollbackError);
+            }
             markFailed(docId, truncate("索引切换失败：" + e.getMessage()));
             return;
         }

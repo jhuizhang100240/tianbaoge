@@ -31,4 +31,22 @@
         limit #{limit}
     </select>
 
+    <select id="selectSelectionMetrics" resultType="java.util.Map">
+        select b.book_id   as bookId,
+               b.title     as title,
+               b.isbn      as isbn,
+               (select coalesce(sum(s.qty_available), 0)
+                  from biz_stock s where s.book_id = b.book_id) as stock,
+               coalesce(b.sale_count, 0) as saleCount,
+               (select count(*)
+                  from biz_borrow br
+                 where br.book_id = b.book_id
+                   and br.borrow_time &gt;= date_sub(now(), interval 90 day)) as borrow90
+        from biz_book b
+        where b.del_flag = '0'
+          and b.status = 1
+        order by b.sale_count desc, b.book_id asc
+        limit #{limit}
+    </select>
+
 </mapper>

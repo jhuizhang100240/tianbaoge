@@ -121,7 +121,8 @@ public class QdrantClient
             item.put("payload", point.getPayload());
             payload.add(item);
         }
-        post("/collections/{collection}/points?wait=true", Map.of("points", payload), "upsert");
+        // Qdrant 的 upsert 是 PUT /points（POST /points 是「按 ids 取点」，误用会报 missing field `ids`）
+        put("/collections/{collection}/points?wait=true", Map.of("points", payload), "upsert");
     }
 
     /**
@@ -253,6 +254,20 @@ public class QdrantClient
         try
         {
             restClient.post().uri(uri, collection())
+                    .contentType(MediaType.APPLICATION_JSON).body(body)
+                    .retrieve().toBodilessEntity();
+        }
+        catch (RestClientResponseException e)
+        {
+            throw toQdrantException(action, e);
+        }
+    }
+
+    private void put(String uri, Object body, String action)
+    {
+        try
+        {
+            restClient.put().uri(uri, collection())
                     .contentType(MediaType.APPLICATION_JSON).body(body)
                     .retrieve().toBodilessEntity();
         }

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.ai.domain.KbChunk;
+import com.tbgbook.bookstore.ai.index.IndexingPipeline;
 import com.tbgbook.bookstore.ai.service.IKbChunkService;
 import com.tbgbook.common.annotation.Log;
 import com.tbgbook.common.core.controller.BaseController;
@@ -33,6 +34,8 @@ import lombok.RequiredArgsConstructor;
 public class KbChunkController extends BaseController
 {
     private final IKbChunkService kbChunkService;
+
+    private final IndexingPipeline indexingPipeline;
 
     /**
      * 切片列表（分页）。
@@ -89,5 +92,16 @@ public class KbChunkController extends BaseController
     {
         kbChunkService.removeChunks(chunkIds);
         return success();
+    }
+
+    /**
+     * 重试向量化（仅失败切片；成功后若文档无剩余失败则自动激活）。
+     */
+    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @Log(title = "知识库切片", businessType = BusinessType.UPDATE)
+    @PostMapping("/{chunkId}/retry")
+    public AjaxResult retry(@PathVariable("chunkId") Long chunkId)
+    {
+        return success(indexingPipeline.retryChunk(chunkId));
     }
 }

@@ -91,6 +91,31 @@ public class KbFileStorage
         }
     }
 
+    /**
+     * 回读原始文档（重建索引用）。
+     */
+    public byte[] read(String fileUrl)
+    {
+        if (!StringUtils.hasText(fileUrl))
+        {
+            throw BizErrors.ruleViolated("原始文件地址缺失，无法重建索引");
+        }
+        try
+        {
+            if (fileUrl.startsWith(LOCAL_PREFIX))
+            {
+                String root = properties.getKb().getStorageRoot();
+                return Files.readAllBytes(Paths.get(root, fileUrl.substring(LOCAL_PREFIX.length())));
+            }
+            return ossOperator.download(fileUrl);
+        }
+        catch (Exception e)
+        {
+            log.error("read kb file failed: {}", fileUrl, e);
+            throw BizErrors.serverError("原始文件读取失败，无法重建索引");
+        }
+    }
+
     private String storeLocal(String root, byte[] content, String originalFilename)
     {
         String extension = extension(originalFilename);

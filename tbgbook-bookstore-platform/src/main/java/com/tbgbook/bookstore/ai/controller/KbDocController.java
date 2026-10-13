@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.ai.domain.KbDoc;
+import com.tbgbook.bookstore.ai.domain.KbReindexRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadRequest;
 import com.tbgbook.bookstore.ai.service.IKbChunkService;
 import com.tbgbook.bookstore.ai.service.IKbDocService;
@@ -120,5 +121,17 @@ public class KbDocController extends BaseController
         data.put("list", kbChunkService.selectChunkList(docId, vectorStatus, Boolean.TRUE.equals(onlyZeroHit)));
         data.put("summary", kbChunkService.summarize(docId));
         return success(data);
+    }
+
+    /**
+     * 重建索引（可覆盖切片参数；重建期间旧索引仍可检索，完成时灰度切换）。
+     */
+    @PreAuthorize("@ss.hasPermi('ai:kb')")
+    @Log(title = "知识库文档", businessType = BusinessType.UPDATE)
+    @PostMapping("/{docId}/reindex")
+    public AjaxResult reindex(@PathVariable("docId") Long docId,
+            @RequestBody(required = false) KbReindexRequest request)
+    {
+        return success(kbDocService.reindex(docId, request));
     }
 }

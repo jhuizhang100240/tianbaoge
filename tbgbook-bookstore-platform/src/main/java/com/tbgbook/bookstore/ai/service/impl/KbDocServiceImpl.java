@@ -23,6 +23,7 @@ import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.tbgbook.bookstore.ai.core.AiRedisKeys;
 import com.tbgbook.bookstore.ai.domain.KbChunk;
 import com.tbgbook.bookstore.ai.domain.KbDoc;
+import com.tbgbook.bookstore.ai.domain.KbReindexRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadResult;
 import com.tbgbook.bookstore.ai.index.Chunker;
@@ -155,21 +156,51 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         kbDoc.setFailReason("");
         kbDoc.setStatus(1);
 
-        List<KbChunk> chunks = new ArrayList<>(parsed.chunks().size());
-        int seqNo = 1;
-        for (String piece : parsed.chunks())
+        return writeTxService.persist(kbDoc, buildChunks(parsed.chunks()));
+    }
+
+    @Override
+    public KbUploadResult reindex(Long docId, KbReindexRequest request)
+    {
+        if (docId == null)
         {
-            KbChunk chunk = new KbChunk();
-            chunk.setSeqNo(seqNo++);
-            chunk.setContent(piece);
-            chunk.setCharCount(piece.length());
-            chunk.setVectorId(UUID.randomUUID().toString());
-            chunk.setVectorStatus(0);
-            chunk.setFailReason("");
-            chunk.setHitCount(0);
-            chunks.add(chunk);
+            throw BizErrors.badRequest("文档ID不能为空");
         }
-        return writeTxService.persist(kbDoc, chunks);
+        KbDoc doc = getById(docId);
+        if (doc == null)
+        {
+            throw BizErrors.notFound("文档", docId);
+        }
+        // 待处理(1)也算「正在索引中」：避免在队列期间再叠一代次（契约 409）
+        if (Integer.valueOf(1).equals(doc.getIndexStatus()) || Integer.valueOf(2).equals(doc.getIndexStatus()))
+        {
+            throw BizErrors.conflict("文档正在索引中");
+        }
+        int chunkSize = request != null && request.getChunkSize() != null ? request.getChunkSize()
+                : (doc.getChunkSize() != null ? doc.getChunkSize() : intConfig("biz.ai.kb.chunk.size", 500));
+        int chunkOverlap = request != null && request.getChunkOverlap() != null ? request.getChunkOverlap()
+                : (doc.getChunkOverlap() != null ? doc.getChunkOverlap()
+                        : intConfig("biz.ai.kb.chunk.overlap", 50));
+        if (chunkSize <= chunkOverlap || chunkOverlap < 0)
+        {
+            throw BizErrors.ruleViolated("切片长度必须大于重叠长度");
+        }
+        boolean force = request != null && Boolean.TRUE.equals(request.getForce());
+        boolean sameParams = doc.getChunkSize() != null && doc.getChunkOverlap() != null
+                && chunkSize == doc.getChunkSize() && chunkOverlap == doc.getChunkOverlap();
+        boolean noFailures = doc.getChunkFailed() == null || doc.getChunkFailed() == 0;
+        if (!force && sameParams && Integer.valueOf(3).equals(doc.getIndexStatus()) && noFailures)
+        {
+            return new KbUploadResult(docId, doc.getIndexStatus(), doc.getChunkTotal());
+        }
+
+        byte[] content = kbFileStorage.read(doc.getFileUrl());
+        ParsedText parsed = parseWithTimeout(doc.getFileType(), content, chunkSize, chunkOverlap);
+        if (!StringUtils.hasText(parsed.text()) || parsed.chunks().isEmpty())
+        {
+            throw BizErrors.ruleViolated("文档内容为空或无法解析");
+        }
+        return writeTxService.stageRebuild(doc, buildChunks(parsed.chunks()), chunkSize, chunkOverlap);
     }
 
     @Override
@@ -340,6 +371,25 @@ public class KbDocServiceImpl extends ServiceImpl<KbDocMapper, KbDoc> implements
         {
             throw BizErrors.ruleViolated("不支持的文件类型：" + (fileType.isEmpty() ? "未知" : fileType));
         }
+    }
+
+    private List<KbChunk> buildChunks(List<String> pieces)
+    {
+        List<KbChunk> chunks = new ArrayList<>(pieces.size());
+        int seqNo = 1;
+        for (String piece : pieces)
+        {
+            KbChunk chunk = new KbChunk();
+            chunk.setSeqNo(seqNo++);
+            chunk.setContent(piece);
+            chunk.setCharCount(piece.length());
+            chunk.setVectorId(UUID.randomUUID().toString());
+            chunk.setVectorStatus(0);
+            chunk.setFailReason("");
+            chunk.setHitCount(0);
+            chunks.add(chunk);
+        }
+        return chunks;
     }
 
     private ParsedText parseWithTimeout(String fileType, byte[] content, int chunkSize, int chunkOverlap)

@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.baomidou.mybatisplus.spring.service.IService;
 import com.tbgbook.bookstore.ai.domain.KbDoc;
+import com.tbgbook.bookstore.ai.domain.KbReindexRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadRequest;
 import com.tbgbook.bookstore.ai.domain.KbUploadResult;
 
@@ -23,6 +24,11 @@ public interface IKbDocService extends IService<KbDoc>
      * 上传：校验 → OSS 存储 → 同步解析+切片 → 落库（切片行 vectorStatus=0，待索引扫描）。
      */
     KbUploadResult upload(KbUploadRequest request);
+
+    /**
+     * 重建索引：可覆盖切片参数；重建期间旧索引仍可检索，完成时灰度切换。
+     */
+    KbUploadResult reindex(Long docId, KbReindexRequest request);
 
     /**
      * 新增（管理端手工建档；不做解析）。

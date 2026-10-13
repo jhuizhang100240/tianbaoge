@@ -147,7 +147,17 @@ public class AiSummaryServiceImpl extends ServiceImpl<AiSummaryMapper, AiSummary
         {
             throw BizErrors.badRequest("请选择要删除的内容");
         }
-        return baseMapper.deleteBatchIds(List.of(summaryIds));
+        int count = 0;
+        for (Long summaryId : summaryIds)
+        {
+            if (getById(summaryId) == null)
+            {
+                throw BizErrors.notFound("摘要内容", summaryId);
+            }
+            removeById(summaryId);
+            count++;
+        }
+        return count;
     }
 
     @Override

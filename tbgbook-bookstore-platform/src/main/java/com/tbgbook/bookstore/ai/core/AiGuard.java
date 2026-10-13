@@ -21,6 +21,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AiGuard
 {
+    /** 占位符：非空以满足 starter Bean 构造，但语义上视为「未配置」 */
+    public static final String UNSET_PLACEHOLDER = "__TBG_AI_KEY_UNSET__";
+
     private final ISysConfigService configService;
 
     private final AiCircuitBreaker aiCircuitBreaker;
@@ -44,7 +47,7 @@ public class AiGuard
         {
             throw BizErrors.serviceUnavailable("AI 功能已在后台停用");
         }
-        if (!StringUtils.hasText(dashscopeApiKey))
+        if (!StringUtils.hasText(dashscopeApiKey) || UNSET_PLACEHOLDER.equals(dashscopeApiKey.trim()))
         {
             throw BizErrors.serviceUnavailable("AI 服务未配置密钥，请联系管理员");
         }

@@ -184,7 +184,17 @@ public class RecommendServiceImpl extends ServiceImpl<RecommendConfigMapper, Rec
         {
             throw BizErrors.badRequest("请选择要删除的置顶记录");
         }
-        return recommendPinMapper.deleteBatchIds(List.of(pinIds));
+        int count = 0;
+        for (Long pinId : pinIds)
+        {
+            if (recommendPinMapper.selectById(pinId) == null)
+            {
+                throw BizErrors.notFound("置顶记录", pinId);
+            }
+            recommendPinMapper.deleteById(pinId);
+            count++;
+        }
+        return count;
     }
 
     @Override

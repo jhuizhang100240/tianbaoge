@@ -102,7 +102,17 @@ public class AiQaServiceImpl extends ServiceImpl<AiAnnotationMapper, AiAnnotatio
         {
             throw BizErrors.badRequest("请选择要删除的标注");
         }
-        return baseMapper.deleteBatchIds(List.of(annotationIds));
+        int count = 0;
+        for (Long annotationId : annotationIds)
+        {
+            if (getById(annotationId) == null)
+            {
+                throw BizErrors.notFound("标注", annotationId);
+            }
+            baseMapper.deleteById(annotationId);
+            count++;
+        }
+        return count;
     }
 
     @Override

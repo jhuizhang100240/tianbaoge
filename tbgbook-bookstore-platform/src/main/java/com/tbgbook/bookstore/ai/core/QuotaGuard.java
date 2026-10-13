@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.redisson.api.RRateLimiter;
+import org.redisson.api.RBucket;
 import org.redisson.api.RateIntervalUnit;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
@@ -114,7 +115,19 @@ public class QuotaGuard
     private void acquire(String key, int limit, RateIntervalUnit unit, String message)
     {
         RRateLimiter limiter = redissonClient.getRateLimiter(key);
-        limiter.trySetRate(RateType.OVERALL, limit, 1, unit);
+        // 限额可运营调整：与上次生效值不同则重建限流器（当前窗口重新计数），否则沿用
+        RBucket<Integer> limitBucket = redissonClient.getBucket(key + ":limit");
+        Integer currentLimit = limitBucket.get();
+        if (currentLimit == null || currentLimit != limit)
+        {
+            limiter.delete();
+            limiter.trySetRate(RateType.OVERALL, limit, 1, unit);
+            limitBucket.set(limit);
+        }
+        else
+        {
+            limiter.trySetRate(RateType.OVERALL, limit, 1, unit);
+        }
         if (!limiter.tryAcquire())
         {
             throw BizErrors.tooManyRequests(message);

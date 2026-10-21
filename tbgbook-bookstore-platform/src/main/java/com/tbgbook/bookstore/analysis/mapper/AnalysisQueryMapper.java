@@ -15,6 +15,20 @@ public interface AnalysisQueryMapper
 
     Map<String, Object> dayProfitMetrics(@Param("day") LocalDate day);
 
+    Map<String, Object> saleSummary(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    List<Map<String, Object>> saleByDimension(@Param("start") LocalDate start,
+            @Param("end") LocalDate end, @Param("dimension") String dimension);
+
+    List<Map<String, Object>> bookRankSale(@Param("start") LocalDate start, @Param("end") LocalDate end,
+            @Param("limit") int limit, @Param("orderByProfit") boolean orderByProfit);
+
+    List<Map<String, Object>> bookRankSlow(@Param("threshold") java.time.LocalDateTime threshold,
+            @Param("limit") int limit);
+
+    List<Map<String, Object>> categoryShareRange(@Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
     List<Map<String, Object>> rangeOrderMetrics(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
     List<Map<String, Object>> rangeProfitMetrics(@Param("start") LocalDate start, @Param("end") LocalDate end);

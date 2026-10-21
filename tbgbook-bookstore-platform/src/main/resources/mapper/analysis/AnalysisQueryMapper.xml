@@ -29,6 +29,155 @@
           and o.create_time &lt; date_add(#{day}, interval 1 day)
     </select>
 
+    <select id="saleSummary" resultType="java.util.LinkedHashMap">
+        select
+            coalesce(sum(case when o.status in (2, 3, 4) then o.pay_amount else 0 end), 0) as saleAmount,
+            coalesce(sum(case when o.status in (2, 3, 4) then 1 else 0 end), 0) as orderCount,
+            coalesce(sum(case when o.status in (2, 3, 4) and o.member_id &gt; 0 then 1 else 0 end), 0)
+                as memberOrderCount,
+            coalesce(sum(case when o.status in (2, 3, 4) then o.discount_total else 0 end), 0)
+                as discountTotal,
+            coalesce(sum(case when o.status = 7 then o.pay_amount else 0 end), 0) as refundAmount,
+            coalesce((
+                select sum(oi.share_amount - oi.cost_price * oi.qty)
+                from biz_order_item oi
+                where oi.order_id in (
+                    select o2.order_id from biz_order o2
+                    where o2.store_id = 1 and o2.status in (2, 3, 4)
+                      and o2.create_time &gt;= #{start}
+                      and o2.create_time &lt; date_add(#{end}, interval 1 day)
+                )
+            ), 0) as grossProfit
+        from biz_order o
+        where o.store_id = 1
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+    </select>
+
+    <select id="saleByDimension" resultType="java.util.LinkedHashMap">
+        <choose>
+            <when test="dimension == 'category'">
+                select cast(coalesce(c.category_id, 0) as char) as dimensionKey,
+                       coalesce(c.category_name, '未分类') as dimensionName,
+                       coalesce(sum(oi.share_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0) as grossProfit
+                from biz_order o
+                join biz_order_item oi on oi.order_id = o.order_id
+                left join biz_book b on b.book_id = oi.book_id
+                left join biz_category c on c.category_id = b.category_id
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by c.category_id, c.category_name
+                order by saleAmount desc
+            </when>
+            <when test="dimension == 'member_level'">
+                select cast(o.member_level_id as char) as dimensionKey,
+                       coalesce(ml.level_name, '散客/未知') as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((
+                           select sum(oi.share_amount - oi.cost_price * oi.qty)
+                           from biz_order_item oi where oi.order_id = o.order_id
+                       )), 0) as grossProfit
+                from biz_order o
+                left join biz_member_level ml on ml.level_id = o.member_level_id
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.member_level_id, ml.level_name
+                order by saleAmount desc
+            </when>
+            <when test="dimension == 'channel'">
+                select cast(o.order_type as char) as dimensionKey,
+                       case o.order_type when 1 then '门店收银' when 2 then '线上下单' else '教材预订' end
+                           as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((
+                           select sum(oi.share_amount - oi.cost_price * oi.qty)
+                           from biz_order_item oi where oi.order_id = o.order_id
+                       )), 0) as grossProfit
+                from biz_order o
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.order_type
+                order by saleAmount desc
+            </when>
+            <when test="dimension == 'cashier'">
+                select o.cashier_by as dimensionKey,
+                       case when o.cashier_by = '' then '未记录' else o.cashier_by end as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((
+                           select sum(oi.share_amount - oi.cost_price * oi.qty)
+                           from biz_order_item oi where oi.order_id = o.order_id
+                       )), 0) as grossProfit
+                from biz_order o
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.cashier_by
+                order by saleAmount desc
+            </when>
+            <otherwise>
+                select '' as dimensionKey, '' as dimensionName, 0 as saleAmount,
+                       0 as orderCount, 0 as grossProfit from dual where 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="bookRankSale" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn as isbn, b.title as title,
+               coalesce(sum(oi.qty), 0) as saleQty,
+               coalesce(sum(oi.share_amount), 0) as saleAmount,
+               coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0) as grossProfit,
+               coalesce(c.category_name, '未分类') as categoryName
+        from biz_order o
+        join biz_order_item oi on oi.order_id = o.order_id
+        left join biz_book b on b.book_id = oi.book_id
+        left join biz_category c on c.category_id = b.category_id
+        where o.store_id = 1 and o.status in (2, 3, 4) and oi.book_id &gt; 0
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+        group by b.book_id, b.isbn, b.title, c.category_name
+        <choose>
+            <when test="orderByProfit">order by grossProfit desc, saleQty desc</when>
+            <otherwise>order by saleQty desc, saleAmount desc</otherwise>
+        </choose>
+        limit #{limit}
+    </select>
+
+    <select id="bookRankSlow" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn as isbn, b.title as title,
+               coalesce(sum(s.qty_available + s.qty_locked + s.qty_damaged), 0) as stockQty,
+               (select max(sf.create_time) from biz_stock_flow sf
+                where sf.book_id = b.book_id and sf.biz_type = 2) as lastSaleTime
+        from biz_book b
+        left join biz_stock s on s.book_id = b.book_id and s.store_id = b.store_id
+        where b.store_id = 1 and b.del_flag = '0' and b.status &lt;&gt; 4
+        group by b.book_id, b.isbn, b.title
+        having stockQty &gt; 0 and (lastSaleTime is null or lastSaleTime &lt; #{threshold})
+        order by lastSaleTime asc, stockQty desc
+        limit #{limit}
+    </select>
+
+    <select id="categoryShareRange" resultType="java.util.LinkedHashMap">
+        select coalesce(c.category_name, '未分类') as categoryName,
+               coalesce(sum(oi.share_amount), 0) as saleAmount
+        from biz_order o
+        join biz_order_item oi on oi.order_id = o.order_id
+        left join biz_book b on b.book_id = oi.book_id
+        left join biz_category c on c.category_id = b.category_id
+        where o.store_id = 1 and o.status in (2, 3, 4)
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+        group by c.category_name
+        order by saleAmount desc
+    </select>
+
     <select id="rangeOrderMetrics" resultType="java.util.LinkedHashMap">
         select date(create_time) as metric_date,
                coalesce(sum(case when status in (2, 3, 4) then pay_amount else 0 end), 0) as sale_amount,

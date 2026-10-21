@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.analysis.mapper.AnalysisQueryMapper">
+
+    <select id="dayOrderMetrics" resultType="java.util.LinkedHashMap">
+        select
+            coalesce(sum(case when status in (2, 3, 4) then pay_amount else 0 end), 0) as sale_amount,
+            coalesce(sum(case when status in (2, 3, 4) then 1 else 0 end), 0) as order_count,
+            coalesce(sum(case when status in (2, 3, 4) and member_id &gt; 0 then 1 else 0 end), 0)
+                as member_order_count,
+            coalesce(sum(case when status in (2, 3, 4) then discount_total else 0 end), 0)
+                as discount_total,
+            coalesce(sum(case when status = 7 then pay_amount else 0 end), 0) as refund_amount
+        from biz_order
+        where store_id = 1
+          and create_time &gt;= #{day}
+          and create_time &lt; date_add(#{day}, interval 1 day)
+    </select>
+
+    <select id="dayProfitMetrics" resultType="java.util.LinkedHashMap">
+        select coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0) as gross_profit
+        from biz_order_item oi
+        join biz_order o on o.order_id = oi.order_id
+        where o.store_id = 1
+          and o.status in (2, 3, 4)
+          and o.create_time &gt;= #{day}
+          and o.create_time &lt; date_add(#{day}, interval 1 day)
+    </select>
+
+    <select id="rangeOrderMetrics" resultType="java.util.LinkedHashMap">
+        select date(create_time) as metric_date,
+               coalesce(sum(case when status in (2, 3, 4) then pay_amount else 0 end), 0) as sale_amount,
+               coalesce(sum(case when status in (2, 3, 4) then 1 else 0 end), 0) as order_count,
+               coalesce(sum(case when status in (2, 3, 4) and member_id &gt; 0 then 1 else 0 end), 0)
+                   as member_order_count,
+               coalesce(sum(case when status in (2, 3, 4) then discount_total else 0 end), 0)
+                   as discount_total,
+               coalesce(sum(case when status = 7 then pay_amount else 0 end), 0) as refund_amount
+        from biz_order
+        where store_id = 1
+          and create_time &gt;= #{start}
+          and create_time &lt; date_add(#{end}, interval 1 day)
+        group by date(create_time)
+        order by metric_date
+    </select>
+
+    <select id="rangeProfitMetrics" resultType="java.util.LinkedHashMap">
+        select date(o.create_time) as metric_date,
+               coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0) as gross_profit
+        from biz_order_item oi
+        join biz_order o on o.order_id = oi.order_id
+        where o.store_id = 1
+          and o.status in (2, 3, 4)
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+        group by date(o.create_time)
+        order by metric_date
+    </select>
+
+    <select id="metricRows" resultType="java.util.LinkedHashMap">
+        select metric_date, metric_code, metric_value
+        from biz_metric_daily
+        where store_id = 1
+          and dim_type = ''
+          and dim_value = ''
+          and metric_date &gt;= #{start}
+          and metric_date &lt;= #{end}
+    </select>
+
+    <select id="topBooks" resultType="java.util.LinkedHashMap">
+        select oi.book_id as bookId, oi.isbn as isbn, oi.title as title,
+               coalesce(sum(oi.qty), 0) as saleQty,
+               coalesce(sum(oi.share_amount), 0) as saleAmount
+        from biz_order_item oi
+        join biz_order o on o.order_id = oi.order_id
+        where o.store_id = 1
+          and o.status in (2, 3, 4)
+          and oi.book_id &gt; 0
+          and o.create_time &gt;= #{day}
+          and o.create_time &lt; date_add(#{day}, interval 1 day)
+        group by oi.book_id, oi.isbn, oi.title
+        order by saleQty desc, saleAmount desc
+        limit #{limit}
+    </select>
+
+    <select id="categoryShare" resultType="java.util.LinkedHashMap">
+        select coalesce(c.category_name, '未分类') as categoryName,
+               coalesce(sum(oi.share_amount), 0) as saleAmount
+        from biz_order_item oi
+        join biz_order o on o.order_id = oi.order_id
+        left join biz_book b on b.book_id = oi.book_id
+        left join biz_category c on c.category_id = b.category_id
+        where o.store_id = 1
+          and o.status in (2, 3, 4)
+          and o.create_time &gt;= #{day}
+          and o.create_time &lt; date_add(#{day}, interval 1 day)
+        group by c.category_name
+        order by saleAmount desc
+    </select>
+
+    <select id="screenMemberBlock" resultType="java.util.LinkedHashMap">
+        select
+            (select count(*) from biz_member
+             where store_id = 1
+               and create_time &gt;= #{day}
+               and create_time &lt; date_add(#{day}, interval 1 day)) as newMembers,
+            (select count(distinct member_id) from biz_order
+             where store_id = 1
+               and status in (2, 3, 4)
+               and member_id &gt; 0
+               and create_time &gt;= #{day}
+               and create_time &lt; date_add(#{day}, interval 1 day)) as activeMembers
+    </select>
+</mapper>

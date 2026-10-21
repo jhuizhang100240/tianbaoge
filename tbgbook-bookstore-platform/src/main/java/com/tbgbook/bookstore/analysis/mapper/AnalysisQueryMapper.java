@@ -29,6 +29,37 @@ public interface AnalysisQueryMapper
     List<Map<String, Object>> categoryShareRange(@Param("start") LocalDate start,
             @Param("end") LocalDate end);
 
+    List<Map<String, Object>> memberNewTrend(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    List<Map<String, Object>> memberLevelDistribution();
+
+    Map<String, Object> memberActiveStats(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    Map<String, Object> memberRepurchase(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    Map<String, Object> memberConsumeRatio(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    List<Map<String, Object>> memberRetentionWeekly(@Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
+    List<Map<String, Object>> memberRetentionMonthly(@Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
+    Map<String, Object> inventoryStructure(@Param("categoryId") Long categoryId);
+
+    Map<String, Object> inventorySales(@Param("start") LocalDate start, @Param("end") LocalDate end,
+            @Param("categoryId") Long categoryId);
+
+    Map<String, Object> inventoryStockKinds(@Param("categoryId") Long categoryId);
+
+    List<Map<String, Object>> outOfStock(@Param("categoryId") Long categoryId);
+
+    Map<String, Object> inventoryTotalAmount(@Param("categoryId") Long categoryId);
+
+    Map<String, Object> textbookSeasonHeader(@Param("listId") Long listId, @Param("term") String term);
+
+    List<Map<String, Object>> textbookSeasonItems(@Param("listId") Long listId, @Param("term") String term);
+
     List<Map<String, Object>> rangeOrderMetrics(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
     List<Map<String, Object>> rangeProfitMetrics(@Param("start") LocalDate start, @Param("end") LocalDate end);

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.analysis.domain.MetricDaily;
+import com.tbgbook.bookstore.analysis.service.IAnalysisDomainService;
 import com.tbgbook.bookstore.analysis.service.IAnalysisSaleService;
 import com.tbgbook.bookstore.analysis.service.IMetricDailyService;
 import com.tbgbook.common.core.controller.BaseController;
@@ -34,6 +35,36 @@ public class AnalysisController extends BaseController
     private final IMetricDailyService metricDailyService;
 
     private final IAnalysisSaleService analysisSaleService;
+
+    private final IAnalysisDomainService analysisDomainService;
+
+    @PreAuthorize("@ss.hasPermi('analysis:member:list')")
+    @GetMapping("/member/summary")
+    public AjaxResult memberSummary(
+            @RequestParam("startDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam("endDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate)
+    {
+        return success(analysisDomainService.memberSummary(startDate, endDate));
+    }
+
+    @PreAuthorize("@ss.hasPermi('analysis:inventory:list')")
+    @GetMapping("/inventory/summary")
+    public AjaxResult inventorySummary(
+            @RequestParam("startDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam("endDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(value = "categoryId", required = false) Long categoryId)
+    {
+        return success(analysisDomainService.inventorySummary(startDate, endDate, categoryId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('analysis:textbook:list')")
+    @GetMapping("/textbook/season")
+    public AjaxResult textbookSeason(
+            @RequestParam(value = "listId", required = false) Long listId,
+            @RequestParam(value = "term", required = false) String term)
+    {
+        return success(analysisDomainService.textbookSeason(listId, term));
+    }
 
     @PreAuthorize("@ss.hasPermi('analysis:sale:list')")
     @GetMapping("/sale/summary")

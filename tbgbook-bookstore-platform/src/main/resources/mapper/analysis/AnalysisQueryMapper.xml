@@ -178,6 +178,192 @@
         order by saleAmount desc
     </select>
 
+    <select id="memberNewTrend" resultType="java.util.LinkedHashMap">
+        select date(create_time) as date, count(*) as count
+        from biz_member
+        where store_id = 1 and create_time &gt;= #{start}
+          and create_time &lt; date_add(#{end}, interval 1 day)
+        group by date(create_time)
+        order by date
+    </select>
+
+    <select id="memberLevelDistribution" resultType="java.util.LinkedHashMap">
+        select case when level_name = '' then '未分级' else level_name end as levelName,
+               count(*) as count
+        from biz_member
+        where store_id = 1
+        group by level_name
+        order by count desc
+    </select>
+
+    <select id="memberActiveStats" resultType="java.util.LinkedHashMap">
+        select count(distinct member_id) as activeMembers,
+               count(*) as memberOrders,
+               coalesce(sum(pay_amount), 0) as memberSaleAmount
+        from biz_order
+        where store_id = 1 and status in (2, 3, 4) and member_id &gt; 0
+          and create_time &gt;= #{start}
+          and create_time &lt; date_add(#{end}, interval 1 day)
+    </select>
+
+    <select id="memberRepurchase" resultType="java.util.LinkedHashMap">
+        select count(*) as memberBuyers,
+               coalesce(sum(case when cnt &gt;= 2 then 1 else 0 end), 0) as repeatBuyers
+        from (
+            select member_id, count(*) as cnt
+            from biz_order
+            where store_id = 1 and status in (2, 3, 4) and member_id &gt; 0
+              and create_time &gt;= #{start}
+              and create_time &lt; date_add(#{end}, interval 1 day)
+            group by member_id
+        ) t
+    </select>
+
+    <select id="memberConsumeRatio" resultType="java.util.LinkedHashMap">
+        select coalesce(sum(case when status in (2, 3, 4) then pay_amount else 0 end), 0) as totalSale,
+               coalesce(sum(case when status in (2, 3, 4) and member_id &gt; 0 then pay_amount else 0 end), 0)
+                   as memberSale
+        from biz_order
+        where store_id = 1
+          and create_time &gt;= #{start}
+          and create_time &lt; date_add(#{end}, interval 1 day)
+    </select>
+
+    <select id="memberRetentionWeekly" resultType="java.util.LinkedHashMap">
+        select date_format(date_sub(t.first_order, interval weekday(t.first_order) day), '%Y-%m-%d') as cohort,
+               count(*) as cohortSize,
+               sum(case when exists (
+                   select 1 from biz_order o2
+                   where o2.member_id = t.member_id and o2.status in (2, 3, 4)
+                     and o2.create_time &gt;= date_add(t.first_order, interval 1 day)
+                     and o2.create_time &lt; date_add(t.first_order, interval 8 day)
+               ) then 1 else 0 end) as retained
+        from (
+            select member_id, min(create_time) as first_order
+            from biz_order
+            where store_id = 1 and status in (2, 3, 4)
+            group by member_id
+        ) t
+        where t.first_order &gt;= #{start}
+          and t.first_order &lt; date_add(#{end}, interval 1 day)
+        group by cohort
+        order by cohort
+    </select>
+
+    <select id="memberRetentionMonthly" resultType="java.util.LinkedHashMap">
+        select date_format(t.first_order, '%Y-%m') as cohort,
+               count(*) as cohortSize,
+               sum(case when exists (
+                   select 1 from biz_order o2
+                   where o2.member_id = t.member_id and o2.status in (2, 3, 4)
+                     and o2.create_time &gt;= date_add(t.first_order, interval 1 day)
+                     and o2.create_time &lt; date_add(t.first_order, interval 31 day)
+               ) then 1 else 0 end) as retained
+        from (
+            select member_id, min(create_time) as first_order
+            from biz_order
+            where store_id = 1 and status in (2, 3, 4)
+            group by member_id
+        ) t
+        where t.first_order &gt;= #{start}
+          and t.first_order &lt; date_add(#{end}, interval 1 day)
+        group by cohort
+        order by cohort
+    </select>
+
+    <select id="inventoryStructure" resultType="java.util.LinkedHashMap">
+        select coalesce(sum(s.qty_available), 0) as available,
+               coalesce(sum(s.qty_locked), 0) as locked,
+               coalesce(sum(s.qty_borrowed), 0) as borrowed,
+               coalesce(sum(s.qty_damaged), 0) as damaged
+        from biz_stock s
+        join biz_book b on b.book_id = s.book_id
+        where s.store_id = 1
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+    </select>
+
+    <select id="inventorySales" resultType="java.util.LinkedHashMap">
+        select coalesce(sum(oi.qty), 0) as soldQty,
+               count(distinct oi.book_id) as soldKinds
+        from biz_order o
+        join biz_order_item oi on oi.order_id = o.order_id
+        join biz_book b on b.book_id = oi.book_id
+        where o.store_id = 1 and o.status in (2, 3, 4)
+          and oi.book_id &gt; 0
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+    </select>
+
+    <select id="inventoryStockKinds" resultType="java.util.LinkedHashMap">
+        select count(distinct s.book_id) as stockKinds
+        from biz_stock s
+        join biz_book b on b.book_id = s.book_id
+        where s.store_id = 1
+          and (s.qty_available + s.qty_locked + s.qty_damaged) &gt; 0
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+    </select>
+
+    <select id="outOfStock" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn, b.title,
+               coalesce(sum(s.qty_available), 0) as qtyAvailable
+        from biz_book b
+        left join biz_stock s on s.book_id = b.book_id and s.store_id = b.store_id
+        where b.store_id = 1 and b.del_flag = '0' and b.status in (1, 3)
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+        group by b.book_id, b.isbn, b.title
+        having qtyAvailable = 0
+        order by b.book_id
+        limit 50
+    </select>
+
+    <select id="inventoryTotalAmount" resultType="java.util.LinkedHashMap">
+        select coalesce(sum((s.qty_available + s.qty_locked + s.qty_damaged) * b.cost_price), 0) as totalAmount
+        from biz_stock s
+        join biz_book b on b.book_id = s.book_id
+        where s.store_id = 1
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+    </select>
+
+    <select id="textbookSeasonHeader" resultType="java.util.LinkedHashMap">
+        select count(*) as listCount,
+               coalesce(sum(reserve_qty), 0) as reserveQty,
+               coalesce(sum(arrived_qty), 0) as arrivedQty,
+               coalesce(sum(picked_qty), 0) as pickedQty
+        from biz_textbook_list
+        where store_id = 1
+        <choose>
+            <when test="listId != null">and list_id = #{listId}</when>
+            <otherwise>and term = #{term}</otherwise>
+        </choose>
+    </select>
+
+    <select id="textbookSeasonItems" resultType="java.util.LinkedHashMap">
+        <choose>
+            <when test="listId != null">
+                select i.list_id as listId, i.book_id as bookId, i.isbn, i.title,
+                       i.reserve_qty as reserveQty, i.arrived_qty as arrivedQty,
+                       i.picked_qty as pickedQty, i.remain_qty as remainQty
+                from biz_textbook_list_item i
+                join biz_textbook_list l on l.list_id = i.list_id
+                where l.store_id = 1 and l.list_id = #{listId}
+                order by i.item_id
+            </when>
+            <otherwise>
+                select i.isbn, max(i.title) as title,
+                       coalesce(sum(i.reserve_qty), 0) as reserveQty,
+                       coalesce(sum(i.arrived_qty), 0) as arrivedQty,
+                       coalesce(sum(i.picked_qty), 0) as pickedQty,
+                       coalesce(sum(i.remain_qty), 0) as remainQty
+                from biz_textbook_list_item i
+                join biz_textbook_list l on l.list_id = i.list_id
+                where l.store_id = 1 and l.term = #{term}
+                group by i.isbn
+                order by i.isbn
+            </otherwise>
+        </choose>
+    </select>
+
     <select id="rangeOrderMetrics" resultType="java.util.LinkedHashMap">
         select date(create_time) as metric_date,
                coalesce(sum(case when status in (2, 3, 4) then pay_amount else 0 end), 0) as sale_amount,

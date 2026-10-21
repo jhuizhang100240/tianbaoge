@@ -7,6 +7,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tbgbook.bookstore.member.domain.Member;
+import com.tbgbook.bookstore.member.service.IMemberService;
 import com.tbgbook.common.core.domain.AjaxResult;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +28,8 @@ public class AppAuthInterceptor implements HandlerInterceptor
 
     private final ObjectMapper objectMapper;
 
+    private final IMemberService memberService;
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception
@@ -44,6 +48,15 @@ public class AppAuthInterceptor implements HandlerInterceptor
                 memberId = tokenService.parseMemberId(token);
             }
             catch (Exception ignored)
+            {
+                memberId = null;
+            }
+        }
+        if (memberId != null)
+        {
+            Member member = memberService.selectMemberById(memberId);
+            if (member == null || !Integer.valueOf(1).equals(member.getStatus())
+                    || Integer.valueOf(1).equals(member.getAnonymized()))
             {
                 memberId = null;
             }

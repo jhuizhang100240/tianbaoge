@@ -16,6 +16,8 @@ public interface IExportTaskService
 {
     ExportTask create(CreateExportRequest request);
 
+    ExportTask createForMember(Long memberId, CreateExportRequest request);
+
     Map<String, Object> createCustom(CustomReportRequest request, long estimatedRows);
 
     List<ExportTask> selectExportList(ExportTask query);

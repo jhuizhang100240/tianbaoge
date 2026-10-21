@@ -97,6 +97,30 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
     @Override
     public ExportTask create(CreateExportRequest request)
     {
+        return createInternal(request, SecurityUtils.getUsername());
+    }
+
+    @Override
+    public ExportTask createForMember(Long memberId, CreateExportRequest request)
+    {
+        if (memberId == null)
+        {
+            throw BizErrors.badRequest("会员ID不能为空");
+        }
+        if (request == null || !"member".equals(request.getExportType()))
+        {
+            throw BizErrors.badRequest("会员数据导出类型必须为 member");
+        }
+        Map<String, Object> filters = request.getFilters() == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getFilters());
+        filters.put("memberId", memberId);
+        request.setFilters(filters);
+        request.setCostFields(false);
+        return createInternal(request, "member:" + memberId);
+    }
+
+    private ExportTask createInternal(CreateExportRequest request, String operator)
+    {
         String type = request.getExportType();
         if (!EXPORT_TYPES.contains(type))
         {
@@ -107,8 +131,6 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
         {
             throw BizErrors.forbidden("请求含成本字段但无查看权限");
         }
-        String operator = SecurityUtils.getUsername();
-
         Map<String, Object> filters = request.getFilters() == null
                 ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getFilters());
         LocalDate[] range = resolveRange(filters);

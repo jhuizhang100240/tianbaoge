@@ -40,6 +40,7 @@
 
         <aliyun.sdk.oss>3.17.4</aliyun.sdk.oss>
         <hutool-all.version>5.8.10</hutool-all.version>
+        <zxing.version>3.5.3</zxing.version>
         <jackson.version>2.16.1</jackson.version>
     </properties>
 
@@ -172,6 +173,18 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt</artifactId>
                 <version>${jwt.version}</version>
+            </dependency>
+
+            <!-- 二维码：会员码 / 取货码（会员端阶段九） -->
+            <dependency>
+                <groupId>com.google.zxing</groupId>
+                <artifactId>core</artifactId>
+                <version>${zxing.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.zxing</groupId>
+                <artifactId>javase</artifactId>
+                <version>${zxing.version}</version>
             </dependency>
 
             <!-- 验证码 -->

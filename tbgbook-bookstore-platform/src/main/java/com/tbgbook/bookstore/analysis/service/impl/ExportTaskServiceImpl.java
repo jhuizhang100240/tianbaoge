@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,8 @@ import com.tbgbook.system.service.ISysConfigService;
 import cn.idev.excel.ExcelWriter;
 import cn.idev.excel.FastExcel;
 import cn.idev.excel.write.metadata.WriteSheet;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 
 /**
  * 异步导出任务 Service 实现。
@@ -74,17 +77,20 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
 
     private final ISysConfigService configService;
 
+    private final RedissonClient redissonClient;
+
     private final ThreadPoolTaskExecutor executor;
 
     public ExportTaskServiceImpl(AnalysisExportMapper analysisExportMapper,
             ExportFileStorage exportFileStorage, ObjectMapper objectMapper,
-            ISysConfigService configService,
+            ISysConfigService configService, RedissonClient redissonClient,
             @Qualifier("analysisExportExecutor") ThreadPoolTaskExecutor executor)
     {
         this.analysisExportMapper = analysisExportMapper;
         this.exportFileStorage = exportFileStorage;
         this.objectMapper = objectMapper;
         this.configService = configService;
+        this.redissonClient = redissonClient;
         this.executor = executor;
     }
 
@@ -102,14 +108,6 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
             throw BizErrors.forbidden("请求含成本字段但无查看权限");
         }
         String operator = SecurityUtils.getUsername();
-        long running = count(new LambdaQueryWrapper<ExportTask>()
-                .eq(ExportTask::getStoreId, STORE_ID)
-                .in(ExportTask::getStatus, 1, 2)
-                .eq(ExportTask::getCreateBy, operator));
-        if (running >= MAX_RUNNING)
-        {
-            throw BizErrors.tooManyRequests("已有过多进行中的导出任务，请稍后再试");
-        }
 
         Map<String, Object> filters = request.getFilters() == null
                 ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getFilters());
@@ -150,7 +148,7 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
         task.setFailReason("");
         task.setCreateBy(operator);
         task.setCreateTime(now);
-        baseMapper.insert(task);
+        insertWithLimit(task, operator);
         submitIfPending(task.getTaskId());
         return task;
     }
@@ -190,8 +188,54 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
         }
         wrapper.orderByDesc(ExportTask::getTaskId);
         List<ExportTask> list = list(wrapper);
-        list.forEach(task -> task.setFileUrl(null));
+        LocalDateTime now = LocalDateTime.now();
+        list.forEach(task -> {
+            if (Integer.valueOf(3).equals(task.getStatus()) && task.getExpireTime() != null
+                    && now.isAfter(task.getExpireTime()))
+            {
+                refreshExpired(task);
+            }
+            task.setFileUrl(null);
+        });
         return list;
+    }
+
+    /**
+     * 单用户创建锁 + 进行中任务数校验，避免 count→insert 的 TOCTOU 竞争。
+     */
+    private void insertWithLimit(ExportTask task, String operator)
+    {
+        RLock lock = redissonClient.getLock("analysis:export:create:" + operator);
+        boolean locked = false;
+        try
+        {
+            locked = lock.tryLock(2, 10, TimeUnit.SECONDS);
+            if (!locked)
+            {
+                throw BizErrors.tooManyRequests("导出任务创建繁忙，请稍后重试");
+            }
+            long running = count(new LambdaQueryWrapper<ExportTask>()
+                    .eq(ExportTask::getStoreId, STORE_ID)
+                    .in(ExportTask::getStatus, 1, 2)
+                    .eq(ExportTask::getCreateBy, operator));
+            if (running >= MAX_RUNNING)
+            {
+                throw BizErrors.tooManyRequests("已有过多进行中的导出任务，请稍后再试");
+            }
+            baseMapper.insert(task);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            throw BizErrors.serverError("导出任务创建被中断，请重试");
+        }
+        finally
+        {
+            if (locked && lock.isHeldByCurrentThread())
+            {
+                lock.unlock();
+            }
+        }
     }
 
     @Override
@@ -306,7 +350,9 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
                     .eq(ExportTask::getTaskId, taskId)
                     .set(ExportTask::getTotalRows, dataset.rows().size())
                     .set(ExportTask::getFileSize, Files.size(temp))
-                    .set(ExportTask::getFinishTime, LocalDateTime.now()));
+                    .set(ExportTask::getFinishTime, LocalDateTime.now())
+                    .set(ExportTask::getExpireTime,
+                            LocalDateTime.now().plusDays(intConfig("biz.export.file.expire.days", 7))));
         }
         catch (Exception e)
         {

@@ -93,6 +93,8 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
         LocalDate[] range = parseRange(question);
         String metric = detectMetric(question);
         String modelUsed = "rule";
+        int promptTokens = 0;
+        int completionTokens = 0;
         if (metric == null)
         {
             if (containsOutOfScope(question))
@@ -102,6 +104,8 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
             ModelIntent intent = classifyWithModel(question);
             metric = intent.metric();
             modelUsed = intent.model();
+            promptTokens = intent.promptTokens();
+            completionTokens = intent.completionTokens();
         }
         if (metric == null)
         {
@@ -116,7 +120,7 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
         // 首字耗时以「回答文本就绪」为准；会话落库不应计入首字指标
         int latency = (int) (System.currentTimeMillis() - started);
         Long sessionId = ensureSession(request.getSessionId());
-        saveMessages(sessionId, question, answer, modelUsed, latency);
+        saveMessages(sessionId, question, answer, modelUsed, promptTokens, completionTokens, latency);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("answer", answer.text());
@@ -228,7 +232,8 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
                     .promptTokens(promptTokens).completionTokens(completionTokens)
                     .latencyMs((int) (System.currentTimeMillis() - started)).success(true).build());
             String code = text == null ? "" : text.trim().split("\\s+")[0].replaceAll("[^a-z_]", "");
-            return new ModelIntent(METRIC_CODES.contains(code) ? code : null, model);
+            return new ModelIntent(METRIC_CODES.contains(code) ? code : null, model,
+                    promptTokens, completionTokens);
         }
         catch (RuntimeException e)
         {
@@ -382,7 +387,8 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
         return session.getSessionId();
     }
 
-    private void saveMessages(Long sessionId, String question, Answer answer, String model, int latency)
+    private void saveMessages(Long sessionId, String question, Answer answer, String model,
+            int promptTokens, int completionTokens, int latency)
     {
         LocalDateTime now = LocalDateTime.now();
         AiMessage questionMessage = new AiMessage();
@@ -413,8 +419,8 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
         answerMessage.setCitations(toJson(answer.citations()));
         answerMessage.setRealtimeData(toJson(answer.chart()));
         answerMessage.setModelName(model);
-        answerMessage.setPromptTokens(0);
-        answerMessage.setCompletionTokens(0);
+        answerMessage.setPromptTokens(promptTokens);
+        answerMessage.setCompletionTokens(completionTokens);
         answerMessage.setLatencyMs(latency);
         answerMessage.setFirstTokenMs(latency);
         answerMessage.setFeedback(0);
@@ -454,7 +460,7 @@ public class AnalysisAskServiceImpl implements IAnalysisAskService
     {
     }
 
-    private record ModelIntent(String metric, String model)
+    private record ModelIntent(String metric, String model, int promptTokens, int completionTokens)
     {
     }
 }

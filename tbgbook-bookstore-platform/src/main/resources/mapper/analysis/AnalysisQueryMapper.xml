@@ -239,10 +239,17 @@
                      and o2.create_time &lt; date_add(t.first_order, interval 8 day)
                ) then 1 else 0 end) as retained
         from (
-            select member_id, min(create_time) as first_order
-            from biz_order
-            where store_id = 1 and status in (2, 3, 4)
-            group by member_id
+            select o.member_id, min(o.create_time) as first_order
+            from biz_order o
+            join (
+                select distinct member_id
+                from biz_order
+                where store_id = 1 and status in (2, 3, 4) and member_id &gt; 0
+                  and create_time &gt;= #{start}
+                  and create_time &lt; date_add(#{end}, interval 1 day)
+            ) cand on cand.member_id = o.member_id
+            where o.store_id = 1 and o.status in (2, 3, 4) and o.member_id &gt; 0
+            group by o.member_id
         ) t
         where t.first_order &gt;= #{start}
           and t.first_order &lt; date_add(#{end}, interval 1 day)
@@ -260,10 +267,17 @@
                      and o2.create_time &lt; date_add(t.first_order, interval 31 day)
                ) then 1 else 0 end) as retained
         from (
-            select member_id, min(create_time) as first_order
-            from biz_order
-            where store_id = 1 and status in (2, 3, 4)
-            group by member_id
+            select o.member_id, min(o.create_time) as first_order
+            from biz_order o
+            join (
+                select distinct member_id
+                from biz_order
+                where store_id = 1 and status in (2, 3, 4) and member_id &gt; 0
+                  and create_time &gt;= #{start}
+                  and create_time &lt; date_add(#{end}, interval 1 day)
+            ) cand on cand.member_id = o.member_id
+            where o.store_id = 1 and o.status in (2, 3, 4) and o.member_id &gt; 0
+            group by o.member_id
         ) t
         where t.first_order &gt;= #{start}
           and t.first_order &lt; date_add(#{end}, interval 1 day)

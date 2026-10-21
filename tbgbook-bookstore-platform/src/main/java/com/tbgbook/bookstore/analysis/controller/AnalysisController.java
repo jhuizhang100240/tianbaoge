@@ -8,11 +8,14 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tbgbook.bookstore.analysis.domain.MetricDaily;
+import com.tbgbook.bookstore.analysis.domain.request.AnalysisAskRequest;
 import com.tbgbook.bookstore.analysis.service.IAnalysisDomainService;
+import com.tbgbook.bookstore.analysis.service.IAnalysisAskService;
 import com.tbgbook.bookstore.analysis.service.IAnalysisSaleService;
 import com.tbgbook.bookstore.analysis.service.IMetricDailyService;
 import com.tbgbook.common.core.controller.BaseController;
@@ -37,6 +40,17 @@ public class AnalysisController extends BaseController
     private final IAnalysisSaleService analysisSaleService;
 
     private final IAnalysisDomainService analysisDomainService;
+
+    private final IAnalysisAskService analysisAskService;
+
+    @PreAuthorize("@ss.hasPermi('analysis:ask:list')")
+    @com.tbgbook.common.annotation.Log(title = "AI 数据问答",
+            businessType = com.tbgbook.common.enums.BusinessType.OTHER)
+    @org.springframework.web.bind.annotation.PostMapping("/ask")
+    public AjaxResult ask(@jakarta.validation.Valid @RequestBody AnalysisAskRequest request)
+    {
+        return success(analysisAskService.ask(request));
+    }
 
     @PreAuthorize("@ss.hasPermi('analysis:member:list')")
     @GetMapping("/member/summary")

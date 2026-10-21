@@ -75,6 +75,12 @@ public final class BizErrors
         return new ServiceException(message, BizErrorCode.CONFLICT);
     }
 
+    /** 410 资源已过期（下载中心文件超过保留天数） */
+    public static ServiceException gone(String message)
+    {
+        return new ServiceException(message, BizErrorCode.GONE);
+    }
+
     /** 413 上传文件过大 */
     public static ServiceException payloadTooLarge(String message)
     {

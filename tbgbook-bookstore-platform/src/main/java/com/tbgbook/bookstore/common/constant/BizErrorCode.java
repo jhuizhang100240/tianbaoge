@@ -40,6 +40,9 @@ public final class BizErrorCode
     /** 资源冲突（唯一键重复、状态已变更、幂等键重复、乐观锁冲突） */
     public static final int CONFLICT = 409;
 
+    /** 资源已过期（下载中心文件过期） */
+    public static final int GONE = 410;
+
     /** 上传文件过大 */
     public static final int PAYLOAD_TOO_LARGE = 413;
 

@@ -83,6 +83,20 @@ public class AiChatCore
      */
     public ChatOutcome answer(ChatRequest request, Consumer<ChatDeltaEvent> onDelta)
     {
+        return answerInternal(request, onDelta, false);
+    }
+
+    /**
+     * 已由传输层完成同步限流预检时使用，避免 SSE 建连后才发现 429。
+     */
+    public ChatOutcome answerAfterQuotaCheck(ChatRequest request, Consumer<ChatDeltaEvent> onDelta)
+    {
+        return answerInternal(request, onDelta, true);
+    }
+
+    private ChatOutcome answerInternal(ChatRequest request, Consumer<ChatDeltaEvent> onDelta,
+            boolean quotaAlreadyChecked)
+    {
         if (request == null || request.getSessionId() == null)
         {
             throw BizErrors.badRequest("会话ID不能为空");
@@ -102,7 +116,7 @@ public class AiChatCore
         }
         Long memberId = request.getMemberId() != null ? request.getMemberId() : session.getMemberId();
         aiGuard.ensureUsable(AiGuard.AiChannel.CHAT);
-        if (memberId != null && memberId > 0)
+        if (!quotaAlreadyChecked && memberId != null && memberId > 0)
         {
             quotaGuard.checkMember(memberId, "chat");
         }
@@ -113,25 +127,28 @@ public class AiChatCore
         int citeLimit = intConfig("biz.ai.retrieval.cite-limit", 5);
         int scene = session.getScene() == null ? 1 : session.getScene();
         String history = loadHistory(request.getSessionId(), memoryTurns);
+        saveUserMessage(request);
 
         List<RetrievalHit> hits = retrievalService.retrieve(request.getQuestion(), topK, minScore, scene);
         double confidence = hits.isEmpty() ? 0D : hits.get(0).getScore();
 
         if (hits.isEmpty() || confidence < minScore)
         {
+            int fallbackFirstTokenMs = 0;
             if (onDelta != null)
             {
+                fallbackFirstTokenMs = (int) (System.currentTimeMillis() - started);
                 onDelta.accept(new ChatDeltaEvent("delta", FALLBACK_TEXT));
             }
             AiMessage message = saveMessage(request, FALLBACK_TEXT, confidence, 1, 1,
                     null, toJson(request.getRealtimeData()), "", 0, 0,
-                    (int) (System.currentTimeMillis() - started), 0);
+                    (int) (System.currentTimeMillis() - started), fallbackFirstTokenMs);
             if (onDelta != null)
             {
                 onDelta.accept(new ChatDeltaEvent("done", ""));
             }
             return new ChatOutcome(message.getMessageId(), FALLBACK_TEXT, confidence, true, true,
-                    null, 0, 0, 0, (int) (System.currentTimeMillis() - started));
+                    null, 0, 0, fallbackFirstTokenMs, (int) (System.currentTimeMillis() - started));
         }
 
         PromptResolution resolution = promptResolver.resolve(scene, memberId);
@@ -320,6 +337,26 @@ public class AiChatCore
             aiSessionMapper.updateById(update);
         }
         return message;
+    }
+
+    private void saveUserMessage(ChatRequest request)
+    {
+        AiMessage message = new AiMessage();
+        message.setSessionId(request.getSessionId());
+        message.setRole(1);
+        message.setContent(sensitiveMasker.mask(request.getQuestion().trim()));
+        message.setConfidence(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        message.setIsLowConfidence(0);
+        message.setIsFallback(0);
+        message.setCitations("[]");
+        message.setRealtimeData(toJson(request.getRealtimeData()));
+        message.setModelName("");
+        message.setPromptTokens(0);
+        message.setCompletionTokens(0);
+        message.setLatencyMs(0);
+        message.setFirstTokenMs(0);
+        message.setFeedback(0);
+        aiMessageMapper.insert(message);
     }
 
     private String escapeXml(String text)

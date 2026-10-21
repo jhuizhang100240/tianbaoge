@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.app.mapper.AppTradeMapper">
+
+    <select id="selectStockForLock" resultType="java.util.LinkedHashMap">
+        select stock_id as stockId, location_id as locationId, qty_available as qtyAvailable
+        from biz_stock
+        where store_id = 1 and book_id = #{bookId} and qty_available &gt; 0
+        order by qty_available desc, stock_id
+        limit 1
+    </select>
+
+    <update id="lockStock">
+        update biz_stock
+        set qty_available = qty_available - #{qty},
+            qty_locked = qty_locked + #{qty}
+        where stock_id = #{stockId} and qty_available &gt;= #{qty}
+    </update>
+
+    <select id="selectStockForRelease" resultType="java.util.LinkedHashMap">
+        select stock_id as stockId, location_id as locationId, qty_locked as qtyLocked,
+               qty_available as qtyAvailable
+        from biz_stock
+        where store_id = 1 and book_id = #{bookId} and qty_locked &gt; 0
+        order by qty_locked desc, stock_id
+        limit 1
+    </select>
+
+    <update id="releaseStock">
+        update biz_stock
+        set qty_available = qty_available + #{qty},
+            qty_locked = qty_locked - #{qty}
+        where stock_id = #{stockId} and qty_locked &gt;= #{qty}
+    </update>
+
+    <insert id="insertStockFlow">
+        insert into biz_stock_flow
+            (store_id, book_id, location_id, stock_type, biz_type, biz_no, qty_change,
+             qty_before, qty_after, create_by, create_time, remark)
+        values
+            (#{storeId}, #{bookId}, #{locationId}, #{stockType}, #{bizType}, #{bizNo},
+             #{qtyChange}, #{qtyBefore}, #{qtyAfter}, #{createBy}, #{createTime}, #{remark})
+    </insert>
+
+    <update id="lockUsedBook">
+        update biz_used_book
+        set stock_status = 2, lock_order_id = #{orderId}, lock_time = now()
+        where used_book_id = #{usedBookId} and stock_status = 1
+    </update>
+
+    <update id="releaseUsedBook">
+        update biz_used_book
+        set stock_status = 1, lock_order_id = 0, lock_time = null
+        where used_book_id = #{usedBookId} and stock_status = 2
+          and (lock_order_id = #{orderId} or lock_order_id = 0)
+    </update>
+
+    <select id="orderList" resultType="java.util.LinkedHashMap">
+        select o.order_id as orderId, o.order_no as orderNo, o.status,
+               case o.status when 1 then '待支付' when 2 then '已支付' when 3 then '待取货'
+                   when 4 then '已完成' when 5 then '已取消' when 6 then '退款中' else '已退款' end
+                   as statusLabel,
+               o.pay_amount as payAmount, o.pickup_code as pickupCode,
+               o.create_time as createTime, o.pay_expire_time as payExpireTime,
+               (select count(*) from biz_order_item i where i.order_id = o.order_id) as itemCount
+        from biz_order o
+        where o.store_id = 1 and o.member_id = #{memberId}
+        <if test="status != null">and o.status = #{status}</if>
+        order by o.order_id desc
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countOrderList" resultType="long">
+        select count(*) from biz_order o
+        where o.store_id = 1 and o.member_id = #{memberId}
+        <if test="status != null">and o.status = #{status}</if>
+    </select>
+
+    <select id="orderDetail" resultType="java.util.LinkedHashMap">
+        select o.order_id as orderId, o.order_no as orderNo, o.order_type as orderType,
+               o.member_id as memberId, o.member_no as memberNo, o.member_name as memberName,
+               o.member_level_id as memberLevelId, o.book_kind as bookKind, o.total_qty as totalQty,
+               o.total_amount as totalAmount, o.single_discount as singleDiscount,
+               o.member_discount as memberDiscount, o.coupon_amount as couponAmount,
+               o.point_amount as pointAmount, o.discount_total as discountTotal,
+               o.pay_amount as payAmount, o.point_used as pointUsed, o.point_gain as pointGain,
+               o.coupon_id as couponId, o.status, o.pay_expire_time as payExpireTime,
+               o.pay_time as payTime, o.pickup_code as pickupCode, o.pickup_time as pickupTime,
+               o.finish_time as finishTime, o.remark, o.create_time as createTime
+        from biz_order o
+        where o.order_id = #{orderId} and o.member_id = #{memberId} and o.store_id = 1
+    </select>
+
+    <select id="orderItems" resultType="java.util.LinkedHashMap">
+        select item_id as itemId, order_id as orderId, book_id as bookId, used_book_id as usedBookId,
+               isbn, title, book_type as bookType, condition_grade as conditionGrade,
+               origin_price as originPrice, unit_price as unitPrice, qty, amount,
+               single_discount as singleDiscount, member_discount as memberDiscount,
+               coupon_share as couponShare, point_share as pointShare,
+               share_amount as shareAmount
+        from biz_order_item
+        where order_id = #{orderId}
+        order by item_id
+    </select>
+
+    <select id="orderPayments" resultType="java.util.LinkedHashMap">
+        select payment_id as paymentId, pay_no as payNo, pay_method as payMethod,
+               pay_amount as payAmount, pay_status as payStatus, trade_no as tradeNo,
+               pay_time as payTime, refund_amount as refundAmount, refund_time as refundTime
+        from biz_payment
+        where order_id = #{orderId}
+        order by payment_id
+    </select>
+
+    <select id="expiredOrders" resultType="java.util.LinkedHashMap">
+        select order_id as orderId from biz_order
+        where store_id = 1 and status = 1 and pay_expire_time is not null
+          and pay_expire_time &lt; #{now}
+        order by order_id
+        limit 50
+    </select>
+</mapper>

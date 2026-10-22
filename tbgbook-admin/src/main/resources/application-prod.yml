@@ -1,0 +1,157 @@
+# ============================================================================
+# 生产环境（profile: prod）
+# ----------------------------------------------------------------------------
+# 与 dev 的区别（整改前这份文件与 dev 字节相同，切换 profile 不会切到生产库 —— 这是本次修复的核心）：
+#   1. 数据源、Redis、上传路径**全部来自环境变量，无默认值** —— 未设置则启动失败，
+#      而不是静默连上开发库
+#   2. 关闭 Swagger（springdoc.swagger-ui.enabled=false）与 Druid 控制台
+#   3. 不向前端返回异常堆栈与错误详情
+#   4. 关闭热部署、日志升为 warn、连接池按生产容量配置
+#
+# 本文件**不应**出现任何明文凭据（NFR-S12）。application-local.yml 在生产不使用 ——
+# 凭据统一由部署时的环境变量或密钥管理注入。
+# ============================================================================
+# 生产不叠加本机配置文件：凭据只走环境变量，
+# 避免「部署机上恰好留着一个 application-local.yml」改变生产行为
+spring:
+  devtools:
+    restart:
+      enabled: false
+
+  ai:
+    dashscope:
+      api-key: ${TBG_DASHSCOPE_API_KEY:__TBG_AI_KEY_UNSET__}
+      chat:
+        options:
+          model: qwen-plus
+      embedding:
+        options:
+          model: text-embedding-v4
+
+  data:
+    redis:
+      host: ${TBG_REDIS_HOST}
+      port: ${TBG_REDIS_PORT:6379}
+      database: ${TBG_REDIS_DATABASE:0}
+      password: ${TBG_REDIS_PASSWORD}
+      timeout: 10s
+      lettuce:
+        pool:
+          min-idle: 8
+          max-idle: 32
+          max-active: 64
+          max-wait: 2000ms
+
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    druid:
+      master:
+        # 无默认值：未设置 TBG_DB_URL 则启动失败，杜绝「以为在生产实际连开发库」
+        # ⚠️ 部署时 TBG_DB_URL 必须带 sessionVariables=time_zone='+08:00'
+        #    （数据库服务器运行在 UTC，RuoYi 平台侧用库端 sysdate() 写时间，
+        #     不统一会话时区会导致操作日志与业务记录相差 8 小时）
+        #    完整示例见 application-dev.yml 的 master.url
+        url: ${TBG_DB_URL}
+        username: ${TBG_DB_USERNAME}
+        password: ${TBG_DB_PASSWORD}
+      slave:
+        # 从数据源开关/默认关闭（C6 已裁决：单店不做主从）
+        enabled: false
+        url:
+        username:
+        password:
+      initialSize: 10
+      minIdle: 20
+      maxActive: 100
+      maxWait: 60000
+      connectTimeout: 30000
+      socketTimeout: 60000
+      timeBetweenEvictionRunsMillis: 60000
+      minEvictableIdleTimeMillis: 300000
+      maxEvictableIdleTimeMillis: 900000
+      validationQuery: SELECT 1 FROM DUAL
+      testWhileIdle: true
+      testOnBorrow: false
+      testOnReturn: false
+      # 生产关闭监控台与 Web 统计（NFR-S7：控制台不应对外可达）
+      webStatFilter:
+        enabled: false
+      statViewServlet:
+        enabled: false
+      filter:
+        stat:
+          enabled: true
+          # 生产只记录真正拖慢的 SQL
+          log-slow-sql: true
+          slow-sql-millis: 2000
+          merge-sql: true
+        wall:
+          config:
+            # 生产关闭多语句：杜绝 SQL 注入的堆叠语句利用面
+            multi-statement-allow: false
+
+# 上传文件根路径（Linux 部署路径）
+ruoyi:
+  profile: ${TBG_UPLOAD_PATH:/data/tbgbook/uploadPath}
+
+server:
+  port: ${TBG_SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  tomcat:
+    uri-encoding: UTF-8
+    accept-count: 1000
+    threads:
+      max: 800
+      min-spare: 100
+  # 不向前端返回堆栈与错误详情（NFR-S8：错误响应里不出现内部信息）
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+# 日志：正常业务分支 info，问题 warn；生产不输出 debug
+logging:
+  level:
+    com.tbgbook: warn
+    org.springframework: warn
+
+# 接口文档：生产关闭（NFR-S7）
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+token:
+  # 无默认值：必须显式注入，避免开发环境的兜底密钥被带上生产
+  secret: ${TBG_TOKEN_SECRET}
+
+referer:
+  enabled: true
+  allowed-domains: ${TBG_ALLOWED_DOMAINS}
+
+aliyun:
+  oss:
+    endpoint: ${TBG_OSS_ENDPOINT}
+    bucketName: ${TBG_OSS_BUCKET}
+
+wechat:
+  appId: ${TBG_WECHAT_APPID}
+  appSecret: ${TBG_WECHAT_APPSECRET}
+
+tbgbook:
+  app:
+    token-expire-seconds: 1800
+    wechat:
+      mock-enabled: false
+  ai:
+    qdrant:
+      base-url: ${TBG_QDRANT_URL:}
+      api-key: ${TBG_QDRANT_API_KEY:}
+      collection: tbgbook_kb_chunks
+      timeout-ms: 3000
+  analysis:
+    export:
+      storage-root: ${TBG_EXPORT_STORAGE_ROOT:}

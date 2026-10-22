@@ -1,0 +1,177 @@
+# ============================================================================
+# 开发环境（profile: dev）
+# ----------------------------------------------------------------------------
+# 连开发库 192.168.100.168；调试开关全开（Swagger / Druid 控制台 / 详细堆栈 / 热部署）
+#
+# ⚠️ 口令与密钥**不写在本文件中**，见 application-local.yml（已 gitignore）：
+#       cp application-local.example.yml application-local.yml  然后填值
+#    缺失该文件时数据源与 Redis 会因口令为空而连接失败 —— 这是刻意的失败方式，
+#    好过把口令提交进仓库。
+# ============================================================================
+spring:
+  # 本机私有配置叠加在本文件之上（optional: 表示文件不存在也不启动失败）
+  config:
+    import: optional:classpath:application-local.yml
+
+  # AI 供应商：阿里云百炼（通义千问）—— 需求 §6.5 / 后端 CLAUDE.md D6、D7（方案 A）
+  ai:
+    dashscope:
+      # 本机真实值在 application-local.yml（已 gitignore）；无值时由 AiGuard 走降级，不阻断启动
+      # 占位符保证 starter 能完成 Bean 构造（空值会让 DashScope starter 启动失败）；
+      # AiGuard 把该占位符视为「未配置」，调用前直接降级
+      api-key: ${TBG_DASHSCOPE_API_KEY:__TBG_AI_KEY_UNSET__}
+      chat:
+        options:
+          model: qwen-plus
+      embedding:
+        options:
+          model: text-embedding-v4
+
+  # 热部署
+  devtools:
+    restart:
+      enabled: true
+
+  # Redis
+  data:
+    redis:
+      host: 192.168.100.168
+      port: 6379
+      database: 0
+      # password 见 application-local.yml
+      timeout: 10s
+      lettuce:
+        pool:
+          min-idle: 0
+          max-idle: 8
+          max-active: 8
+          max-wait: -1ms
+
+  # 数据库连接池
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    druid:
+      master:
+        url: jdbc:mysql://192.168.100.168:3306/tianbaoge?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&sessionVariables=time_zone=%27%2B08%3A00%27
+
+        # ⚠️ sessionVariables=time_zone='+08:00' 不可删：
+        #    数据库服务器运行在 UTC（实测 @@system_time_zone = UTC），而 RuoYi 平台侧
+        #    （sys_oper_log / sys_logininfor 等）的 XML 用**库端 sysdate()** 写时间，
+        #    业务表则用**应用侧 Date** 写。不统一会话时区的话，同一系统里会出现
+        #    两类时间戳相差 8 小时（实测：oper_time 12:16 vs create_time 20:16）。
+        #    该参数把库会话时区固定为 +08:00，使 sysdate() 与应用侧一致。
+        username: root
+        # password 见 application-local.yml
+      slave:
+        # 从数据源开关/默认关闭（C6 已裁决：单店不做主从）
+        enabled: false
+        url:
+        username:
+        password:
+      initialSize: 5
+      minIdle: 10
+      maxActive: 20
+      maxWait: 60000
+      connectTimeout: 30000
+      socketTimeout: 60000
+      timeBetweenEvictionRunsMillis: 60000
+      minEvictableIdleTimeMillis: 300000
+      maxEvictableIdleTimeMillis: 900000
+      validationQuery: SELECT 1 FROM DUAL
+      testWhileIdle: true
+      testOnBorrow: false
+      testOnReturn: false
+      # 开发环境保留监控页（生产关闭，见 application-prod.yml）
+      webStatFilter:
+        enabled: true
+      statViewServlet:
+        enabled: true
+        # 设置白名单，不填则允许所有访问
+        allow:
+        url-pattern: /druid/*
+        # 控制台账号密码见 application-local.yml
+      filter:
+        stat:
+          enabled: true
+          # 慢SQL记录
+          log-slow-sql: true
+          slow-sql-millis: 1000
+          merge-sql: true
+        wall:
+          config:
+            multi-statement-allow: true
+
+# 上传文件根路径（Windows 本地）
+ruoyi:
+  profile: D:/ruoyi/uploadPath
+
+# 服务端口
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  tomcat:
+    uri-encoding: UTF-8
+    accept-count: 1000
+    threads:
+      max: 800
+      min-spare: 100
+  # 开发环境把详细堆栈吐给前端，便于定位（生产必须关，见 application-prod.yml）
+  error:
+    include-stacktrace: always
+    include-message: always
+
+# 日志
+logging:
+  level:
+    com.tbgbook: debug
+    org.springframework: warn
+
+# 接口文档
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+
+# 令牌密钥
+token:
+  # ⚠️ 仅开发环境的兜底值。生产必须由 TBG_TOKEN_SECRET 覆盖（见 application-prod.yml）
+  secret: ${TBG_TOKEN_SECRET:tbgbook-dev-only-change-me}
+
+# 防盗链
+referer:
+  enabled: false
+  allowed-domains: localhost,127.0.0.1
+
+# 阿里云 OSS
+aliyun:
+  oss:
+    endpoint: https://oss-cn-beijing.aliyuncs.com
+    bucketName: tianbaoge
+    # accessKeyId / accessKeySecret 见 application-local.yml
+
+# 微信小程序（阶段九联调；appId / appSecret 见 application-local.yml）
+wechat:
+  appId: wx42ca15ad8139cd57
+
+# AI 域（阶段七）：Qdrant REST（开发实例在 192.168.100.168 的 Docker；开发无 api-key）
+tbgbook:
+  app:
+    token-expire-seconds: 1800
+    wechat:
+      mock-enabled: true
+  ai:
+    qdrant:
+      base-url: http://192.168.100.168:6333
+      api-key: ${TBG_QDRANT_API_KEY:}
+      collection: tbgbook_kb_chunks
+      timeout-ms: 3000
+    kb:
+      # 本机无 OSS 凭据（application-local.yml 两键为空）时，知识库原始文档落本地目录
+      storage-root: D:/develop/code/TbgBook/.tmp/kb_storage
+  analysis:
+    export:
+      # 开发环境导出文件落本地目录（无 OSS 凭据）；生产置空走 OSS
+      storage-root: D:/develop/code/TbgBook/.tmp/export_storage

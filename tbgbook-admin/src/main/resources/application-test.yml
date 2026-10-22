@@ -1,0 +1,141 @@
+# ============================================================================
+# 测试环境（profile: test）
+# ----------------------------------------------------------------------------
+# 与 dev 的区别（这三条就是这份文件存在的理由）：
+#   1. 独立端口 8081 与独立库名 tianbaoge_test —— 不与开发库互相污染
+#   2. 关掉 Druid 控制台与热部署 —— 测试机不需要，且控制台是攻击面（NFR-S7）
+#   3. 日志降为 info、不向前端吐堆栈 —— 贴近生产行为
+#
+# 口令与密钥不写在本文件：数据库 / Redis 口令走环境变量或 application-local.yml
+# ============================================================================
+spring:
+  config:
+    import: optional:classpath:application-local.yml
+
+  devtools:
+    restart:
+      enabled: false
+
+  ai:
+    dashscope:
+      # api-key 见 application-local.yml / 环境变量 TBG_DASHSCOPE_API_KEY
+      api-key: ${TBG_DASHSCOPE_API_KEY:__TBG_AI_KEY_UNSET__}
+      chat:
+        options:
+          model: qwen-plus
+      embedding:
+        options:
+          model: text-embedding-v4
+
+  data:
+    redis:
+      host: ${TBG_REDIS_HOST:192.168.100.168}
+      port: ${TBG_REDIS_PORT:6379}
+      database: 1
+      password: ${TBG_REDIS_PASSWORD:}
+      timeout: 10s
+      lettuce:
+        pool:
+          min-idle: 0
+          max-idle: 8
+          max-active: 8
+          max-wait: -1ms
+
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    druid:
+      master:
+        url: ${TBG_DB_URL:jdbc:mysql://192.168.100.168:3306/tianbaoge_test?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&sessionVariables=time_zone=%27%2B08%3A00%27}
+
+        # ⚠️ sessionVariables=time_zone='+08:00' 不可删：
+        #    数据库服务器运行在 UTC（实测 @@system_time_zone = UTC），而 RuoYi 平台侧
+        #    （sys_oper_log / sys_logininfor 等）的 XML 用**库端 sysdate()** 写时间，
+        #    业务表则用**应用侧 Date** 写。不统一会话时区的话，同一系统里会出现
+        #    两类时间戳相差 8 小时（实测：oper_time 12:16 vs create_time 20:16）。
+        #    该参数把库会话时区固定为 +08:00，使 sysdate() 与应用侧一致。
+        username: ${TBG_DB_USERNAME:root}
+        password: ${TBG_DB_PASSWORD:}
+      slave:
+        enabled: false
+      initialSize: 5
+      minIdle: 10
+      maxActive: 20
+      maxWait: 60000
+      connectTimeout: 30000
+      socketTimeout: 60000
+      validationQuery: SELECT 1 FROM DUAL
+      testWhileIdle: true
+      testOnBorrow: false
+      testOnReturn: false
+      # 测试环境关闭监控台（NFR-S7）
+      webStatFilter:
+        enabled: false
+      statViewServlet:
+        enabled: false
+      filter:
+        stat:
+          enabled: true
+          log-slow-sql: true
+          slow-sql-millis: 1000
+          merge-sql: true
+        wall:
+          config:
+            multi-statement-allow: true
+
+# 上传文件根路径
+ruoyi:
+  profile: ${TBG_UPLOAD_PATH:/data/tbgbook/uploadPath}
+
+server:
+  port: 8081
+  servlet:
+    context-path: /
+  tomcat:
+    uri-encoding: UTF-8
+    accept-count: 1000
+    threads:
+      max: 400
+      min-spare: 50
+
+logging:
+  level:
+    com.tbgbook: info
+    org.springframework: warn
+
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+
+token:
+  secret: ${TBG_TOKEN_SECRET:tbgbook-test-only-change-me}
+
+referer:
+  enabled: false
+  allowed-domains: localhost,127.0.0.1
+
+aliyun:
+  oss:
+    endpoint: ${TBG_OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
+    bucketName: ${TBG_OSS_BUCKET:tianbaoge-test}
+
+wechat:
+  appId: ${TBG_WECHAT_APPID:}
+  appSecret: ${TBG_WECHAT_APPSECRET:}
+
+tbgbook:
+  app:
+    token-expire-seconds: 1800
+    wechat:
+      mock-enabled: true
+  ai:
+    qdrant:
+      base-url: ${TBG_QDRANT_URL:http://192.168.100.168:6333}
+      api-key: ${TBG_QDRANT_API_KEY:}
+      collection: tbgbook_kb_chunks
+      timeout-ms: 3000
+  analysis:
+    export:
+      storage-root: D:/develop/code/TbgBook/.tmp/export_storage

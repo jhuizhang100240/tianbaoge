@@ -6,15 +6,19 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import com.tbgbook.bookstore.app.domain.request.CancelOrderRequest;
@@ -52,6 +56,7 @@ import com.tbgbook.bookstore.sale.mapper.OrderMapper;
 import com.tbgbook.bookstore.sale.mapper.PaymentMapper;
 import com.tbgbook.bookstore.sale.mapper.ReturnOrderItemMapper;
 import com.tbgbook.bookstore.sale.mapper.ReturnOrderMapper;
+import com.tbgbook.bookstore.sale.support.StockLockSupport;
 import com.tbgbook.bookstore.usedbook.domain.UsedBook;
 import com.tbgbook.bookstore.usedbook.mapper.UsedBookMapper;
 import com.tbgbook.common.utils.SecurityUtils;
@@ -74,11 +79,11 @@ public class AppOrderServiceImpl implements IAppOrderService
 {
     private static final long STORE_ID = 1L;
 
-    private static final int PAY_TIMEOUT_MINUTES = 15;
-
     private static final DateTimeFormatter NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     private final AppTradeMapper tradeMapper;
+
+    private final StockLockSupport stockLockSupport;
 
     private final IMemberService memberService;
 
@@ -185,7 +190,7 @@ public class AppOrderServiceImpl implements IAppOrderService
             order.setHasSpecialPrice(0);
             order.setNeedApproval(0);
             order.setStatus(Order.STATUS_UNPAID);
-            order.setPayExpireTime(now.plusMinutes(PAY_TIMEOUT_MINUTES));
+            order.setPayExpireTime(now.plusMinutes(intConfig("biz.order.pay.timeout.minutes", 15)));
             order.setPickupCode(pickupCode);
             order.setIsRed(0);
             order.setIsSettled(0);
@@ -229,10 +234,10 @@ public class AppOrderServiceImpl implements IAppOrderService
 
             if (pricing.coupon != null)
             {
-                pricing.coupon.setStatus(2);
-                pricing.coupon.setUseOrderId(order.getOrderId());
-                pricing.coupon.setUseTime(now);
-                couponMapper.updateById(pricing.coupon);
+                if (tradeMapper.claimCoupon(pricing.couponId, memberId, order.getOrderId(), now) != 1)
+                {
+                    throw BizErrors.conflict("优惠券已被使用或已过期");
+                }
             }
             if (pricing.usePoints > 0)
             {
@@ -246,7 +251,7 @@ public class AppOrderServiceImpl implements IAppOrderService
             data.put("payExpireTime", order.getPayExpireTime());
             data.put("pickupCode", pickupCode);
             data.put("status", Order.STATUS_UNPAID);
-            bucket.set(toJson(data), Duration.ofHours(24));
+            cacheOrderResult(bucket, toJson(data));
             return data;
         }
         catch (RuntimeException e)
@@ -276,6 +281,7 @@ public class AppOrderServiceImpl implements IAppOrderService
             throw BizErrors.ruleViolated("支付金额与订单应付金额不一致");
         }
         int method = request.getPayMethod() == null ? 2 : request.getPayMethod();
+        LocalDateTime payTime = LocalDateTime.now();
         String payNo = "PAY" + LocalDateTime.now().format(NO_FMT)
                 + String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
         Payment payment = new Payment();
@@ -287,7 +293,7 @@ public class AppOrderServiceImpl implements IAppOrderService
         payment.setPayAmount(order.getPayAmount());
         payment.setPayStatus(method == 4 ? 2 : 1);
         payment.setTradeNo("");
-        payment.setPayTime(method == 4 ? LocalDateTime.now() : null);
+        payment.setPayTime(method == 4 ? payTime : null);
         payment.setCreateTime(LocalDateTime.now());
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -304,12 +310,15 @@ public class AppOrderServiceImpl implements IAppOrderService
             }
             BigDecimal giftPart = balance.getGiftBalance().min(order.getPayAmount());
             BigDecimal principalPart = order.getPayAmount().subtract(giftPart);
+            if (tradeMapper.markOrderPaid(orderId, payTime) != 1)
+            {
+                throw BizErrors.conflict("订单已支付、已取消或已超时");
+            }
             memberBalanceService.deductBalance(memberId, principalPart, giftPart, order.getPayAmount(),
                     order.getOrderNo(), "订单消费-本金", "订单消费-赠送金");
             paymentMapper.insert(payment);
             order.setStatus(Order.STATUS_PAID);
-            order.setPayTime(LocalDateTime.now());
-            orderMapper.updateById(order);
+            order.setPayTime(payTime);
             memberService.addConsume(memberId, order.getPayAmount());
             if (order.getPointGain() != null && order.getPointGain() > 0)
             {
@@ -414,12 +423,17 @@ public class AppOrderServiceImpl implements IAppOrderService
         {
             itemMap.put(toLong(item.get("itemId")), item);
         }
+        Set<Long> refundedItems = new HashSet<>();
         String returnNo = "RT" + LocalDateTime.now().format(NO_FMT)
                 + String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
         BigDecimal refund = BigDecimal.ZERO;
         int totalQty = 0;
         for (RefundItemRequest line : request.getItems())
         {
+            if (line.getOrderItemId() == null || !refundedItems.add(line.getOrderItemId()))
+            {
+                throw BizErrors.ruleViolated("退货明细重复");
+            }
             Map<String, Object> origin = itemMap.get(line.getOrderItemId());
             if (origin == null)
             {
@@ -430,9 +444,11 @@ public class AppOrderServiceImpl implements IAppOrderService
                 throw BizErrors.ruleViolated("二手书不支持无理由退货");
             }
             int buyQty = toInt(origin.get("qty"));
-            if (line.getReturnQty() == null || line.getReturnQty() < 1 || line.getReturnQty() > buyQty)
+            int remainingQty = buyQty - tradeMapper.refundedQty(orderId, line.getOrderItemId());
+            if (line.getReturnQty() == null || line.getReturnQty() < 1
+                    || line.getReturnQty() > remainingQty)
             {
-                throw BizErrors.ruleViolated("退货数量非法");
+                throw BizErrors.ruleViolated("退货数量超过可退数量");
             }
             refund = refund.add(decimal(origin.get("shareAmount"))
                     .multiply(BigDecimal.valueOf(line.getReturnQty()))
@@ -491,13 +507,26 @@ public class AppOrderServiceImpl implements IAppOrderService
         Order order = orderMapper.selectById(orderId);
         if (order != null && Integer.valueOf(Order.STATUS_UNPAID).equals(order.getStatus()))
         {
-            cancelInternal(order, "支付超时自动取消");
+            try
+            {
+                cancelInternal(order, "支付超时自动取消");
+            }
+            catch (RuntimeException ignored)
+            {
+                // Another request already paid or cancelled the order.
+            }
         }
     }
 
     private void cancelInternal(Order order, String reason)
     {
         if (!Integer.valueOf(Order.STATUS_UNPAID).equals(order.getStatus()))
+        {
+            throw BizErrors.conflict("订单已支付或已完成，无法取消");
+        }
+        String finalRemark = (order.getRemark() == null ? "" : order.getRemark() + "；")
+                + (StringUtils.hasText(reason) ? reason : "用户取消");
+        if (tradeMapper.cancelUnpaid(order.getOrderId(), finalRemark, LocalDateTime.now()) != 1)
         {
             throw BizErrors.conflict("订单已支付或已完成，无法取消");
         }
@@ -513,16 +542,7 @@ public class AppOrderServiceImpl implements IAppOrderService
             else
             {
                 Long bookId = toLong(item.get("bookId"));
-                Map<String, Object> stock = tradeMapper.selectStockForRelease(bookId);
-                if (stock != null)
-                {
-                    int locked = toInt(stock.get("qtyLocked"));
-                    int availableBefore = toInt(stock.get("qtyAvailable"));
-                    tradeMapper.releaseStock(toLong(stock.get("stockId")), qty);
-                    tradeMapper.insertStockFlow(STORE_ID, bookId, toLong(stock.get("locationId")), 1, 12,
-                            order.getOrderNo(), qty, availableBefore, availableBefore + qty, "app",
-                            LocalDateTime.now(), "订单取消释放");
-                }
+                stockLockSupport.unlock(bookId, qty, order.getOrderNo(), "订单取消释放");
             }
         }
         if (order.getCouponId() != null && order.getCouponId() > 0)
@@ -543,9 +563,7 @@ public class AppOrderServiceImpl implements IAppOrderService
                     order.getOrderNo(), "订单取消返还");
         }
         order.setStatus(Order.STATUS_CANCELLED);
-        order.setRemark((order.getRemark() == null ? "" : order.getRemark() + "；")
-                + (StringUtils.hasText(reason) ? reason : "用户取消"));
-        orderMapper.updateById(order);
+        order.setRemark(finalRemark);
     }
 
     private Order requireOwnedOrder(Long orderId, Long memberId)
@@ -572,19 +590,7 @@ public class AppOrderServiceImpl implements IAppOrderService
             }
             return;
         }
-        Map<String, Object> stock = tradeMapper.selectStockForLock(line.book.getBookId());
-        if (stock == null || toInt(stock.get("qtyAvailable")) < line.qty)
-        {
-            throw BizErrors.ruleViolated("部分商品库存不足");
-        }
-        int before = toInt(stock.get("qtyAvailable"));
-        if (tradeMapper.lockStock(toLong(stock.get("stockId")), line.qty) == 0)
-        {
-            throw BizErrors.ruleViolated("部分商品库存不足");
-        }
-        tradeMapper.insertStockFlow(STORE_ID, line.book.getBookId(), toLong(stock.get("locationId")),
-                1, 12, orderNo, -line.qty, before, before - line.qty, "app",
-                LocalDateTime.now(), "线上下单锁库存");
+        stockLockSupport.lock(line.book.getBookId(), line.qty, orderNo, "线上下单锁库存");
     }
 
     private Pricing price(List<CartItemRequest> items, Long couponId, Integer usePoints)
@@ -605,6 +611,7 @@ public class AppOrderServiceImpl implements IAppOrderService
         List<Line> lines = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal memberDiscount = BigDecimal.ZERO;
+        Set<Long> usedBookIds = new HashSet<>();
         for (CartItemRequest item : items)
         {
             if (item == null || item.getQty() == null || item.getQty() < 1)
@@ -619,6 +626,10 @@ public class AppOrderServiceImpl implements IAppOrderService
             }
             if (used)
             {
+                if (item.getQty() != 1 || !usedBookIds.add(item.getUsedBookId()))
+                {
+                    throw BizErrors.ruleViolated("二手书按册销售，每册数量必须为 1 且不能重复");
+                }
                 UsedBook usedBook = usedBookMapper.selectById(item.getUsedBookId());
                 if (usedBook == null || !Integer.valueOf(1).equals(usedBook.getStockStatus()))
                 {
@@ -789,6 +800,32 @@ public class AppOrderServiceImpl implements IAppOrderService
         {
             return "{}";
         }
+    }
+
+    private void cacheOrderResult(RBucket<String> bucket, String serialized)
+    {
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            bucket.set(serialized, Duration.ofHours(24));
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                bucket.set(serialized, Duration.ofHours(24));
+            }
+
+            @Override
+            public void afterCompletion(int status)
+            {
+                if (status != TransactionSynchronization.STATUS_COMMITTED)
+                {
+                    bucket.delete();
+                }
+            }
+        });
     }
 
     private int intConfig(String key, int defaultValue)

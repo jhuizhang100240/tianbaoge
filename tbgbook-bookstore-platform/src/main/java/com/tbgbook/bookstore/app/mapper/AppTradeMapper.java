@@ -30,6 +30,16 @@ public interface AppTradeMapper
 
     int releaseUsedBook(@Param("usedBookId") Long usedBookId, @Param("orderId") Long orderId);
 
+    int markOrderPaid(@Param("orderId") Long orderId, @Param("payTime") LocalDateTime payTime);
+
+    int cancelUnpaid(@Param("orderId") Long orderId, @Param("remark") String remark,
+            @Param("updateTime") LocalDateTime updateTime);
+
+    int claimCoupon(@Param("couponId") Long couponId, @Param("memberId") Long memberId,
+            @Param("orderId") Long orderId, @Param("useTime") LocalDateTime useTime);
+
+    int refundedQty(@Param("orderId") Long orderId, @Param("orderItemId") Long orderItemId);
+
     List<Map<String, Object>> orderList(@Param("memberId") Long memberId, @Param("status") Integer status,
             @Param("offset") int offset, @Param("limit") int limit);
 

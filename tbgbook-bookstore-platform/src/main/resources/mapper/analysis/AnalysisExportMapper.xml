@@ -56,6 +56,34 @@
         order by m.member_id
     </select>
 
+    <select id="exportMemberData" resultType="java.util.LinkedHashMap">
+        select 'profile' as recordType, m.member_no as bizNo, m.nickname as title,
+               0 as qty, null as amount, null as pointChange, m.status as status,
+               m.register_time as eventTime
+        from biz_member m
+        where m.member_id = #{memberId}
+        union all
+        select 'order' as recordType, o.order_no as bizNo,
+               concat('订单-', o.status) as title, o.total_qty as qty,
+               o.pay_amount as amount, null as pointChange, o.status as status,
+               coalesce(o.finish_time, o.pay_time, o.create_time) as eventTime
+        from biz_order o
+        where o.member_id = #{memberId}
+        union all
+        select 'borrow' as recordType, b.borrow_no as bizNo, b.title,
+               1 as qty, null as amount, null as pointChange, b.status as status,
+               coalesce(b.return_time, b.borrow_time) as eventTime
+        from biz_borrow b
+        where b.member_id = #{memberId}
+        union all
+        select 'point' as recordType, p.ref_no as bizNo, p.remark as title,
+               0 as qty, null as amount, p.points_change as pointChange,
+               null as status, p.create_time as eventTime
+        from biz_point_log p
+        where p.member_id = #{memberId}
+        order by eventTime desc
+    </select>
+
     <select id="exportBorrows" resultType="java.util.LinkedHashMap">
         select borrow_no as borrowNo, member_no as memberNo, member_name as memberName,
                isbn, title,

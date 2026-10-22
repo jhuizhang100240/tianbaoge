@@ -74,6 +74,9 @@ public class CouponTemplate extends BaseEntity
     /** 适用范围：全场 */
     public static final int SCOPE_ALL = 1;
 
+    /** 发放方式：2 领券中心 */
+    public static final int GRANT_CLAIM_CENTER = 2;
+
     /** 模板ID */
     @TableId(value = "template_id", type = IdType.AUTO)
     private Long templateId;
@@ -182,6 +185,9 @@ public class CouponTemplate extends BaseEntity
     @Size(max = 200, message = "领券入口配置不能超过 200 个字符")
     @TableField("entry_config")
     private String entryConfig;
+
+    @TableField("grant_type")
+    private Integer grantType;
 
     /** 状态（1草稿 2已发布 3已停用） */
     @TableField("status")

@@ -92,11 +92,14 @@
                    as categoryName
         from biz_book b
         where b.book_id = #{bookId} and b.del_flag = '0'
+          and b.publish_status = 1 and b.status &lt;&gt; 4
     </select>
 
     <select id="bookByIsbn" resultType="java.util.LinkedHashMap">
         select b.book_id as bookId from biz_book b
-        where b.isbn = #{isbn} and b.del_flag = '0' limit 1
+        where b.isbn = #{isbn} and b.del_flag = '0'
+          and b.publish_status = 1 and b.status &lt;&gt; 4
+        limit 1
     </select>
 
     <select id="bookStockSummary" resultType="java.util.LinkedHashMap">

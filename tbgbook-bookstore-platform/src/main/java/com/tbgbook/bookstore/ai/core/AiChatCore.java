@@ -28,6 +28,10 @@ import com.tbgbook.bookstore.ai.domain.AiSession;
 import com.tbgbook.bookstore.ai.mapper.AiMessageMapper;
 import com.tbgbook.bookstore.ai.mapper.AiSessionMapper;
 import com.tbgbook.bookstore.common.exception.BizErrors;
+import com.tbgbook.bookstore.member.domain.Member;
+import com.tbgbook.bookstore.member.domain.MemberStudent;
+import com.tbgbook.bookstore.member.mapper.MemberMapper;
+import com.tbgbook.bookstore.member.mapper.MemberStudentMapper;
 import com.tbgbook.system.service.ISysConfigService;
 
 import lombok.RequiredArgsConstructor;
@@ -78,6 +82,10 @@ public class AiChatCore
 
     private final CallLogRecorder callLogRecorder;
 
+    private final MemberMapper memberMapper;
+
+    private final MemberStudentMapper memberStudentMapper;
+
     /**
      * 处理一轮问答；增量文本通过 {@code onDelta} 回调（可空）。
      */
@@ -127,7 +135,7 @@ public class AiChatCore
         int citeLimit = intConfig("biz.ai.retrieval.cite-limit", 5);
         int scene = session.getScene() == null ? 1 : session.getScene();
         String history = loadHistory(request.getSessionId(), memoryTurns);
-        saveUserMessage(request);
+        saveUserMessage(request, memberId);
 
         List<RetrievalHit> hits = retrievalService.retrieve(request.getQuestion(), topK, minScore, scene);
         double confidence = hits.isEmpty() ? 0D : hits.get(0).getScore();
@@ -140,7 +148,7 @@ public class AiChatCore
                 fallbackFirstTokenMs = (int) (System.currentTimeMillis() - started);
                 onDelta.accept(new ChatDeltaEvent("delta", FALLBACK_TEXT));
             }
-            AiMessage message = saveMessage(request, FALLBACK_TEXT, confidence, 1, 1,
+            AiMessage message = saveMessage(request, memberId, FALLBACK_TEXT, confidence, 1, 1,
                     null, toJson(request.getRealtimeData()), "", 0, 0,
                     (int) (System.currentTimeMillis() - started), fallbackFirstTokenMs);
             if (onDelta != null)
@@ -222,7 +230,7 @@ public class AiChatCore
         }
         int latency = (int) (System.currentTimeMillis() - started);
         String citations = toJson(buildCitations(hits, citeLimit));
-        AiMessage message = saveMessage(request, content.toString(), confidence, 0, 0,
+        AiMessage message = saveMessage(request, memberId, content.toString(), confidence, 0, 0,
                 citations, toJson(request.getRealtimeData()), model, promptTokens, completionTokens,
                 latency, firstTokenMs == null ? 0 : firstTokenMs);
         if (onDelta != null)
@@ -307,14 +315,15 @@ public class AiChatCore
         return citations;
     }
 
-    private AiMessage saveMessage(ChatRequest request, String content, double confidence, int lowConfidence,
+    private AiMessage saveMessage(ChatRequest request, Long memberId, String content, double confidence,
+            int lowConfidence,
             int fallback, String citations, String realtimeData, String model, int promptTokens,
             int completionTokens, int latencyMs, int firstTokenMs)
     {
         AiMessage message = new AiMessage();
         message.setSessionId(request.getSessionId());
         message.setRole(2);
-        message.setContent(sensitiveMasker.mask(content));
+        message.setContent(maskForMember(content, memberId));
         message.setConfidence(BigDecimal.valueOf(confidence).setScale(2, RoundingMode.HALF_UP));
         message.setIsLowConfidence(lowConfidence);
         message.setIsFallback(fallback);
@@ -339,12 +348,12 @@ public class AiChatCore
         return message;
     }
 
-    private void saveUserMessage(ChatRequest request)
+    private void saveUserMessage(ChatRequest request, Long memberId)
     {
         AiMessage message = new AiMessage();
         message.setSessionId(request.getSessionId());
         message.setRole(1);
-        message.setContent(sensitiveMasker.mask(request.getQuestion().trim()));
+        message.setContent(maskForMember(request.getQuestion().trim(), memberId));
         message.setConfidence(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         message.setIsLowConfidence(0);
         message.setIsFallback(0);
@@ -357,6 +366,26 @@ public class AiChatCore
         message.setFirstTokenMs(0);
         message.setFeedback(0);
         aiMessageMapper.insert(message);
+    }
+
+    private String maskForMember(String content, Long memberId)
+    {
+        String phone = null;
+        String studentNo = null;
+        if (memberId != null)
+        {
+            Member member = memberMapper.selectById(memberId);
+            if (member != null)
+            {
+                phone = member.getPhone();
+            }
+            MemberStudent student = memberStudentMapper.selectById(memberId);
+            if (student != null)
+            {
+                studentNo = student.getStudentNo();
+            }
+        }
+        return sensitiveMasker.maskKnown(content, phone, studentNo);
     }
 
     private String escapeXml(String text)

@@ -34,4 +34,28 @@ public class SensitiveMasker
         Matcher student = STUDENT_NO.matcher(masked);
         return student.replaceAll("$1$2******$3");
     }
+
+    public String maskKnown(String text, String phone, String studentNo)
+    {
+        String masked = mask(text);
+        if (!StringUtils.hasText(masked))
+        {
+            return masked;
+        }
+        if (StringUtils.hasText(phone) && phone.length() >= 7)
+        {
+            masked = masked.replace(phone,
+                    phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4));
+        }
+        if (StringUtils.hasText(studentNo) && studentNo.length() > 4)
+        {
+            String replacement = studentNo.length() <= 6
+                    ? studentNo.substring(0, 1) + "****"
+                            + studentNo.substring(studentNo.length() - 1)
+                    : studentNo.substring(0, 2) + "****"
+                            + studentNo.substring(studentNo.length() - 2);
+            masked = masked.replace(studentNo, replacement);
+        }
+        return masked;
+    }
 }

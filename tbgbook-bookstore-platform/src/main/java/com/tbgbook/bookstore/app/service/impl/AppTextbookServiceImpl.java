@@ -52,11 +52,18 @@ public class AppTextbookServiceImpl implements IAppTextbookService
                 .eq(listId != null, TextbookList::getListId, listId)
                 .orderByDesc(TextbookList::getPublishTime);
         List<TextbookList> lists = listMapper.selectList(wrapper);
-        List<Map<String, Object>> items = listId == null ? List.of()
-                : itemMapper.selectList(new LambdaQueryWrapper<TextbookListItem>()
-                .eq(TextbookListItem::getListId, listId)
-                .orderByAsc(TextbookListItem::getItemId)).stream()
-                .map(this::itemMap).toList();
+        List<Map<String, Object>> items = List.of();
+        if (listId != null)
+        {
+            if (lists.isEmpty())
+            {
+                throw BizErrors.notFound("已发布教材清单", listId);
+            }
+            items = itemMapper.selectList(new LambdaQueryWrapper<TextbookListItem>()
+                    .eq(TextbookListItem::getListId, listId)
+                    .orderByAsc(TextbookListItem::getItemId)).stream()
+                    .map(this::itemMap).toList();
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("lists", lists);
         data.put("items", items);

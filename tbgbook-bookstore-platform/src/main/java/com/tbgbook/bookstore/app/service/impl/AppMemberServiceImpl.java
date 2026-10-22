@@ -22,6 +22,8 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -49,13 +51,13 @@ import com.tbgbook.bookstore.member.domain.PointExpiringItem;
 import com.tbgbook.bookstore.member.domain.PointExpiringResult;
 import com.tbgbook.bookstore.member.domain.StoredActivity;
 import com.tbgbook.bookstore.member.domain.SubscribeAuth;
+import com.tbgbook.bookstore.member.mapper.MemberStudentMapper;
 import com.tbgbook.bookstore.member.mapper.SubscribeAuthMapper;
 import com.tbgbook.bookstore.member.service.IMemberBalanceService;
 import com.tbgbook.bookstore.member.service.IMemberLevelService;
 import com.tbgbook.bookstore.member.service.IMemberMessageService;
 import com.tbgbook.bookstore.member.service.IMemberPointService;
 import com.tbgbook.bookstore.member.service.IMemberService;
-import com.tbgbook.bookstore.member.service.IMemberStudentService;
 import com.tbgbook.bookstore.sale.domain.Coupon;
 import com.tbgbook.bookstore.sale.domain.CouponTemplate;
 import com.tbgbook.bookstore.sale.service.ICouponService;
@@ -111,7 +113,7 @@ public class AppMemberServiceImpl implements IAppMemberService
 
     private final IMemberBalanceService balanceService;
 
-    private final IMemberStudentService studentService;
+    private final MemberStudentMapper memberStudentMapper;
 
     private final IMemberMessageService messageService;
 
@@ -435,6 +437,7 @@ public class AppMemberServiceImpl implements IAppMemberService
         List<CouponTemplate> templates = couponTemplateService.list(
                 new LambdaQueryWrapper<CouponTemplate>()
                         .eq(CouponTemplate::getStatus, CouponTemplate.STATUS_PUBLISHED)
+                        .eq(CouponTemplate::getGrantType, CouponTemplate.GRANT_CLAIM_CENTER)
                         .and(wrapper -> wrapper.isNull(CouponTemplate::getValidStart)
                                 .or().le(CouponTemplate::getValidStart, now))
                         .and(wrapper -> wrapper.isNull(CouponTemplate::getValidEnd)
@@ -487,13 +490,33 @@ public class AppMemberServiceImpl implements IAppMemberService
     {
         Long memberId = AppContext.requireMemberId();
         requireMember(memberId);
-        RLock lock = redissonClient.getLock("tbgbook:app:coupon:claim:" + memberId
-                + ":" + request.getTemplateId());
+        RLock lock = redissonClient.getLock("tbgbook:app:coupon:claim:template:"
+                + request.getTemplateId());
+        boolean releaseAfterMethod = true;
         try
         {
             lock.lock(8, TimeUnit.SECONDS);
+            if (TransactionSynchronizationManager.isSynchronizationActive())
+            {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+                {
+                    @Override
+                    public void afterCompletion(int status)
+                    {
+                        if (lock.isHeldByCurrentThread())
+                        {
+                            lock.unlock();
+                        }
+                    }
+                });
+                releaseAfterMethod = false;
+            }
             CouponTemplate template = couponTemplateService.selectCouponTemplateById(request.getTemplateId());
             if (template == null || !Integer.valueOf(CouponTemplate.STATUS_PUBLISHED).equals(template.getStatus()))
+            {
+                throw BizErrors.ruleViolated("该券不在领券中心开放");
+            }
+            if (!Integer.valueOf(CouponTemplate.GRANT_CLAIM_CENTER).equals(template.getGrantType()))
             {
                 throw BizErrors.ruleViolated("该券不在领券中心开放");
             }
@@ -554,7 +577,7 @@ public class AppMemberServiceImpl implements IAppMemberService
         }
         finally
         {
-            if (lock.isHeldByCurrentThread())
+            if (releaseAfterMethod && lock.isHeldByCurrentThread())
             {
                 lock.unlock();
             }
@@ -778,7 +801,7 @@ public class AppMemberServiceImpl implements IAppMemberService
 
     private Map<String, Object> profileData(Member member)
     {
-        MemberStudent student = studentService.selectMemberStudentById(member.getMemberId());
+        MemberStudent student = memberStudentMapper.selectById(member.getMemberId());
         Map<String, Object> studentData = null;
         if (student != null)
         {

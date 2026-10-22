@@ -6,9 +6,14 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
@@ -51,6 +56,10 @@ public class MemberStudentServiceImpl extends ServiceImpl<MemberStudentMapper, M
     private final ReferenceGuard referenceGuard;
 
     private final MemberMapper memberMapper;
+
+    private final RedissonClient redissonClient;
+
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     public List<MemberStudent> selectMemberStudentList(MemberStudent student)
@@ -149,16 +158,33 @@ public class MemberStudentServiceImpl extends ServiceImpl<MemberStudentMapper, M
      * {@inheritDoc}
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public MemberStudent submit(StudentSubmitRequest request)
     {
-        if (request.getMemberId() == null)
+        if (request == null || request.getMemberId() == null)
         {
             throw BizErrors.badRequest("会员ID不能为空");
         }
         requireText(request.getSchool(), "学校不能为空");
         requireText(request.getStudentNo(), "学号不能为空");
         requireText(request.getRealName(), "姓名不能为空");
+        RLock lock = redissonClient.getLock("tbgbook:member:student-no:"
+                + request.getStudentNo().trim().toLowerCase(Locale.ROOT));
+        lock.lock();
+        try
+        {
+            return new TransactionTemplate(transactionManager).execute(status -> submitInTransaction(request));
+        }
+        finally
+        {
+            if (lock.isHeldByCurrentThread())
+            {
+                lock.unlock();
+            }
+        }
+    }
+
+    private MemberStudent submitInTransaction(StudentSubmitRequest request)
+    {
         referenceGuard.requireExists(memberMapper, request.getMemberId(), "会员");
 
         MemberStudent existing = baseMapper.selectById(request.getMemberId());

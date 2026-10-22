@@ -452,14 +452,39 @@ public class ExportTaskServiceImpl extends ServiceImpl<AnalysisExportTaskMapper,
                 }
             }
             case "member" -> {
-                headers.addAll(headersOf("会员卡号", "昵称", "手机号", "学号", "等级", "积分",
-                        "储值本金", "储值赠送", "押金", "状态", "注册时间"));
-                for (Map<String, Object> row : analysisExportMapper.exportMembers())
+                Long memberId = toLong(filters.get("memberId"));
+                if (memberId != null)
                 {
-                    rows.add(List.of(str(row, "memberNo"), str(row, "nickname"), str(row, "phone"),
-                            str(row, "studentNo"), str(row, "levelName"), str(row, "points"),
-                            str(row, "balancePrincipal"), str(row, "balanceGift"), str(row, "depositBalance"),
-                            str(row, "status"), str(row, "createTime")));
+                    if (StringUtils.hasText(task.getCreateBy()) && task.getCreateBy().startsWith("member:"))
+                    {
+                        Long expected = toLong(task.getCreateBy().substring("member:".length()));
+                        if (!memberId.equals(expected))
+                        {
+                            throw BizErrors.forbidden("会员导出任务与筛选会员不一致");
+                        }
+                    }
+                    headers.addAll(headersOf("记录类型", "业务单号", "标题", "数量",
+                            "金额", "积分变动", "状态", "发生时间"));
+                    for (Map<String, Object> row : analysisExportMapper.exportMemberData(memberId))
+                    {
+                        rows.add(List.of(str(row, "recordType"), str(row, "bizNo"),
+                                str(row, "title"), str(row, "qty"), str(row, "amount"),
+                                str(row, "pointChange"), str(row, "status"),
+                                str(row, "eventTime")));
+                    }
+                }
+                else
+                {
+                    headers.addAll(headersOf("会员卡号", "昵称", "手机号", "学号", "等级", "积分",
+                            "储值本金", "储值赠送", "押金", "状态", "注册时间"));
+                    for (Map<String, Object> row : analysisExportMapper.exportMembers())
+                    {
+                        rows.add(List.of(str(row, "memberNo"), str(row, "nickname"), str(row, "phone"),
+                                str(row, "studentNo"), str(row, "levelName"), str(row, "points"),
+                                str(row, "balancePrincipal"), str(row, "balanceGift"),
+                                str(row, "depositBalance"), str(row, "status"),
+                                str(row, "createTime")));
+                    }
                 }
             }
             case "borrow" -> {

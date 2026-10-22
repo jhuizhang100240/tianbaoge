@@ -100,6 +100,10 @@ public class CouponTemplateServiceImpl extends ServiceImpl<CouponTemplateMapper,
         {
             template.setStackable(0);
         }
+        if (template.getGrantType() == null)
+        {
+            template.setGrantType(CouponTemplate.GRANT_CLAIM_CENTER);
+        }
 
         Long predictedId = baseMapper.selectNextTemplateId();
         template.setTemplateNo(buildTemplateNo(predictedId == null ? 1L : predictedId));
@@ -213,6 +217,12 @@ public class CouponTemplateServiceImpl extends ServiceImpl<CouponTemplateMapper,
             throw BizErrors.ruleViolated("适用范围选了「"
                     + (Objects.equals(scopeType, 2) ? "指定分类" : "指定图书")
                     + "」，但范围值是空的 —— 这样的券对任何商品都用不了");
+        }
+
+        Integer grantType = template.getGrantType();
+        if (grantType != null && (grantType < 1 || grantType > 3))
+        {
+            throw BizErrors.ruleViolated("发放方式取值必须是 1/2/3");
         }
     }
 

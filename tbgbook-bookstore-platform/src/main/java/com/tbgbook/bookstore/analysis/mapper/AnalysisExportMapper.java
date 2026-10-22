@@ -17,6 +17,8 @@ public interface AnalysisExportMapper
 
     List<Map<String, Object>> exportMembers();
 
+    List<Map<String, Object>> exportMemberData(@Param("memberId") Long memberId);
+
     List<Map<String, Object>> exportBorrows(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
     List<Map<String, Object>> exportStockcheckDiff(@Param("start") LocalDate start,

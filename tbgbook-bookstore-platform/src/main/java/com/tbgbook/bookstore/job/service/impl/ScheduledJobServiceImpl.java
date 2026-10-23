@@ -5,7 +5,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,6 +16,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.tbgbook.bookstore.analysis.domain.BizTodo;
 import com.tbgbook.bookstore.analysis.domain.ReportPushLog;
@@ -23,6 +26,17 @@ import com.tbgbook.bookstore.analysis.mapper.ReportSubscribeMapper;
 import com.tbgbook.bookstore.analysis.service.IMetricDailyService;
 import com.tbgbook.bookstore.analysis.service.ITodoService;
 import com.tbgbook.bookstore.job.domain.JobRunResult;
+import com.tbgbook.bookstore.member.domain.MemberMessage;
+import com.tbgbook.bookstore.member.domain.MemberTag;
+import com.tbgbook.bookstore.member.domain.PointBatch;
+import com.tbgbook.bookstore.member.domain.PointLog;
+import com.tbgbook.bookstore.member.mapper.MemberMapper;
+import com.tbgbook.bookstore.member.mapper.MemberMessageMapper;
+import com.tbgbook.bookstore.member.mapper.MemberTagMapper;
+import com.tbgbook.bookstore.member.mapper.PointBatchMapper;
+import com.tbgbook.bookstore.member.mapper.PointLogMapper;
+import com.tbgbook.bookstore.member.service.IMemberTagService;
+import com.tbgbook.system.service.ISysConfigService;
 import com.tbgbook.bookstore.job.service.IScheduledJobService;
 import com.tbgbook.bookstore.stock.domain.StockSnapshot;
 import com.tbgbook.bookstore.stock.domain.StockSnapshotItem;
@@ -54,7 +68,33 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
 
     private final ITodoService todoService;
 
+    private final PointBatchMapper pointBatchMapper;
+
+    private final PointLogMapper pointLogMapper;
+
+    private final MemberMessageMapper memberMessageMapper;
+
+    private final MemberTagMapper memberTagMapper;
+
+    private final IMemberTagService memberTagService;
+
+    private final MemberMapper memberMapper;
+
+    private final ISysConfigService configService;
+
+    private final TransactionTemplate transactionTemplate;
+
     private static final long STORE_ID = 1L;
+
+    private static final int CHANGE_EXPIRE = 3;
+
+    private static final int MSG_POINTS_EXPIRE = 4;
+
+    private static final int SEND_PENDING = 1;
+
+    private static final int CHANNEL_INBOX = 2;
+
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     @Override
     public JobRunResult run(String jobCode)
@@ -69,6 +109,8 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             case "stockWarningTask.scan" -> scanStockWarnings();
             case "dashboardPrecomputeTask.run" -> precomputeDashboard();
             case "reportSubscribeTask.push" -> pushReportSubscriptions();
+            case "pointsExpireTask.expireNotify" -> expirePoints();
+            case "memberTagTask.recalc" -> recalcRuleTags();
             default -> JobRunResult.failed(jobCode, "not implemented", LocalDateTime.now());
         };
     }
@@ -238,6 +280,194 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
     }
 
     /**
+     * 积分到期清零 + 到期前提醒。
+     *
+     * <p>到期清零按批次逐条处理，每条批次独立事务：单条脏数据只计失败数，不影响其余会员。
+     * 清零用条件更新（{@code status=1 and remain_points>0 and expire_time<=now}）保证重复触发
+     * 或并发触发时只生效一次。提醒以「会员 + 到期日」去重，避免每日重复推送同一条。
+     */
+    public JobRunResult expirePoints()
+    {
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<PointBatch> dueBatches = pointBatchMapper.selectList(
+                new LambdaQueryWrapper<PointBatch>()
+                        .eq(PointBatch::getStatus, 1)
+                        .gt(PointBatch::getRemainPoints, 0)
+                        .le(PointBatch::getExpireTime, startedAt)
+                        .orderByAsc(PointBatch::getBatchId));
+        int cleared = 0;
+        int failed = 0;
+        for (PointBatch batch : dueBatches)
+        {
+            try
+            {
+                if (expireSingleBatch(batch.getBatchId(), startedAt))
+                {
+                    cleared++;
+                }
+            }
+            catch (RuntimeException e)
+            {
+                failed++;
+            }
+        }
+
+        int notifyDays = configInt("biz.points.expire.notify.days", 30);
+        LocalDateTime cutoff = startedAt.plusDays(Math.max(notifyDays, 0));
+        List<PointBatch> expiring = pointBatchMapper.selectList(
+                new LambdaQueryWrapper<PointBatch>()
+                        .eq(PointBatch::getStatus, 1)
+                        .gt(PointBatch::getRemainPoints, 0)
+                        .gt(PointBatch::getExpireTime, startedAt)
+                        .le(PointBatch::getExpireTime, cutoff)
+                        .orderByAsc(PointBatch::getExpireTime)
+                        .orderByAsc(PointBatch::getBatchId));
+        Map<String, List<PointBatch>> byMemberDay = new LinkedHashMap<>();
+        for (PointBatch batch : expiring)
+        {
+            String day = batch.getExpireTime().toLocalDate().format(DATE);
+            byMemberDay.computeIfAbsent(batch.getMemberId() + "@" + day, k -> new java.util.ArrayList<>())
+                    .add(batch);
+        }
+        int notified = 0;
+        for (Map.Entry<String, List<PointBatch>> entry : byMemberDay.entrySet())
+        {
+            String[] key = entry.getKey().split("@");
+            Long memberId = Long.valueOf(key[0]);
+            String day = key[1];
+            int points = 0;
+            for (PointBatch batch : entry.getValue())
+            {
+                points += nz(batch.getRemainPoints());
+            }
+            try
+            {
+                Long existing = memberMessageMapper.selectCount(
+                        new LambdaQueryWrapper<MemberMessage>()
+                                .eq(MemberMessage::getMemberId, memberId)
+                                .eq(MemberMessage::getMsgType, MSG_POINTS_EXPIRE)
+                                .eq(MemberMessage::getBizNo, "POINT:" + memberId + ":" + day));
+                if (existing > 0)
+                {
+                    continue;
+                }
+                MemberMessage message = new MemberMessage();
+                message.setStoreId(STORE_ID);
+                message.setMemberId(memberId);
+                message.setMsgType(MSG_POINTS_EXPIRE);
+                message.setTitle("积分即将到期");
+                message.setContent("您有 " + points + " 积分将于 " + day + " 到期，请及时使用。");
+                message.setLinkUrl("pages/member/point/logs");
+                message.setBizNo("POINT:" + memberId + ":" + day);
+                message.setSendChannel(CHANNEL_INBOX);
+                message.setSendStatus(SEND_PENDING);
+                message.setFailReason("");
+                message.setSendTime(null);
+                message.setIsRead(0);
+                message.setCreateTime(startedAt);
+                memberMessageMapper.insert(message);
+                notified++;
+            }
+            catch (RuntimeException e)
+            {
+                failed++;
+            }
+        }
+        return JobRunResult.ok("pointsExpireTask.expireNotify", cleared + notified,
+                "expiredBatches=" + cleared + ", notified=" + notified + ", failed=" + failed,
+                startedAt);
+    }
+
+    /** 单批次清零：独立事务，单条失败不影响其余批次 */
+    private boolean expireSingleBatch(Long batchId, LocalDateTime now)
+    {
+        Boolean done = transactionTemplate.execute(status -> expireSingleBatchInTx(batchId, now));
+        return Boolean.TRUE.equals(done);
+    }
+
+    private boolean expireSingleBatchInTx(Long batchId, LocalDateTime now)
+    {
+        PointBatch batch = pointBatchMapper.selectById(batchId);
+        if (batch == null || batch.getExpireTime() == null || batch.getExpireTime().isAfter(now))
+        {
+            return false;
+        }
+        int points = nz(batch.getRemainPoints());
+        if (points <= 0 || pointBatchMapper.expireBatch(batchId, now) == 0)
+        {
+            return false;
+        }
+        int after = nz(memberMapper.selectPoints(batch.getMemberId()));
+        int deducted = Math.min(points, Math.max(after, 0));
+        if (deducted > 0)
+        {
+            memberMapper.deductPoints(batch.getMemberId(), deducted);
+        }
+        PointLog log = new PointLog();
+        log.setMemberId(batch.getMemberId());
+        log.setChangeType(CHANGE_EXPIRE);
+        log.setPointsChange(-points);
+        log.setPointsAfter(Math.max(after - points, 0));
+        log.setBatchId(batchId);
+        log.setRefNo(batch.getRefNo() == null ? "" : batch.getRefNo());
+        log.setCreateBy("system");
+        log.setCreateTime(now);
+        log.setRemark("积分到期清零：" + points + " 分");
+        pointLogMapper.insert(log);
+        return true;
+    }
+
+    /**
+     * 规则标签全量重算。单个标签失败只记录，不中断其余标签。
+     */
+    public JobRunResult recalcRuleTags()
+    {
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<MemberTag> tags = memberTagMapper.selectList(
+                new LambdaQueryWrapper<MemberTag>()
+                        .eq(MemberTag::getStoreId, STORE_ID)
+                        .eq(MemberTag::getIsRule, 1)
+                        .eq(MemberTag::getStatus, "0"));
+        int recalculated = 0;
+        int members = 0;
+        int failed = 0;
+        for (MemberTag tag : tags)
+        {
+            try
+            {
+                var result = memberTagService.recalc(tag.getTagId());
+                recalculated++;
+                members += result.getMemberCount() == null ? 0 : result.getMemberCount();
+            }
+            catch (RuntimeException e)
+            {
+                failed++;
+            }
+        }
+        return JobRunResult.ok("memberTagTask.recalc", recalculated,
+                "tags=" + tags.size() + ", recalculated=" + recalculated
+                        + ", members=" + members + ", failed=" + failed,
+                startedAt);
+    }
+
+    private int configInt(String key, int fallback)
+    {
+        try
+        {
+            String raw = configService.selectConfigByKey(key);
+            if (raw != null && !raw.isBlank())
+            {
+                return Integer.parseInt(raw.trim());
+            }
+        }
+        catch (RuntimeException ignored)
+        {
+            // 配置损坏不应阻断定时任务，落默认值
+        }
+        return fallback;
+    }
+
+    /**
      * 解析订阅的推送时间，换算成「当天应推时刻」。
      *
      * <p>支持 `每日HH:mm` 与 `每周N HH:mm`（N 为 1-7，周一为 1）。返回 `valid=false`
@@ -315,6 +545,11 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
     /** 当天应推时刻的解析结果。 */
     private record DueTime(boolean valid, LocalDateTime at)
     {
+    }
+
+    private int nz(Integer value)
+    {
+        return value == null ? 0 : value;
     }
 
     private int intValue(Object value)

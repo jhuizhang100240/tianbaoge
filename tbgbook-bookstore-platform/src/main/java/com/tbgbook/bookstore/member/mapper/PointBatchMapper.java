@@ -45,6 +45,15 @@ public interface PointBatchMapper extends BaseMapper<PointBatch>
     int markBatchUsedUp(@Param("batchId") Long batchId);
 
     /**
+     * 到期清零（条件更新，幂等）：仅当批次仍有效、仍有剩余且已过期时生效。
+     *
+     * @param batchId 批次ID
+     * @param now     应用侧当前时间（A32：业务时间不用库 now()）
+     * @return 影响行数；0=已被并发清零或尚未到期
+     */
+    int expireBatch(@Param("batchId") Long batchId, @Param("now") LocalDateTime now);
+
+    /**
      * 即将到期积分明细（批次 JOIN 会员），时间窗口由**应用侧**传入（A32 约束）。
      */
     List<PointExpiringItem> selectExpiringItems(@Param("now") LocalDateTime now,

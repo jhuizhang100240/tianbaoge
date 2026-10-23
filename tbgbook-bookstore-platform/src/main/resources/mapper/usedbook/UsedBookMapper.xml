@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  二手书库存 Mapper XML
+  ⚠️ 二手书按册管理、独立库存池（§3.2 库存规则 5），不写 SELECT *、一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.usedbook.mapper.UsedBookMapper">
+
+    <resultMap type="UsedBook" id="UsedBookResult">
+        <result property="usedBookId"          column="used_book_id"          />
+        <result property="storeId"             column="store_id"              />
+        <result property="barCode"             column="bar_code"              />
+        <result property="skuCode"             column="sku_code"              />
+        <result property="recycleId"           column="recycle_id"            />
+        <result property="recycleItemId"       column="recycle_item_id"       />
+        <result property="bookId"              column="book_id"               />
+        <result property="isbn"                column="isbn"                  />
+        <result property="title"               column="title"                 />
+        <result property="author"              column="author"                />
+        <result property="publisherName"       column="publisher_name"        />
+        <result property="coverUrl"            column="cover_url"             />
+        <result property="conditionGradeId"    column="condition_grade_id"    />
+        <result property="conditionGradeName"  column="condition_grade_name"  />
+        <result property="originPrice"         column="origin_price"          />
+        <result property="usedPrice"           column="used_price"            />
+        <result property="costPrice"           column="cost_price"            />
+        <result property="locationId"          column="location_id"           />
+        <result property="stockStatus"         column="stock_status"          />
+        <result property="lockOrderId"         column="lock_order_id"         />
+        <result property="lockTime"            column="lock_time"             />
+        <result property="shelfTime"           column="shelf_time"            />
+        <result property="soldTime"            column="sold_time"             />
+        <result property="createBy"            column="create_by"             />
+        <result property="createTime"          column="create_time"           />
+        <result property="updateBy"            column="update_by"             />
+        <result property="updateTime"          column="update_time"           />
+        <result property="remark"              column="remark"                />
+    </resultMap>
+
+    <select id="selectUsedBookList" parameterType="UsedBook" resultMap="UsedBookResult">
+        select u.used_book_id, u.store_id, u.bar_code, u.sku_code, u.recycle_id, u.recycle_item_id,
+               u.book_id, u.isbn, u.title, u.author, u.publisher_name, u.cover_url,
+               u.condition_grade_id, u.condition_grade_name, u.origin_price, u.used_price,
+               u.cost_price, u.location_id, u.stock_status, u.lock_order_id, u.lock_time,
+               u.shelf_time, u.sold_time, u.create_by, u.create_time, u.update_by, u.update_time,
+               u.remark
+        from biz_used_book u
+        <where>
+            <if test="barCode != null and barCode != ''">
+                and u.bar_code = #{barCode}
+            </if>
+            <if test="skuCode != null and skuCode != ''">
+                and u.sku_code = #{skuCode}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and u.isbn = #{isbn}
+            </if>
+            <if test="title != null and title != ''">
+                and u.title like concat('%', #{title}, '%')
+            </if>
+            <if test="conditionGradeId != null">
+                and u.condition_grade_id = #{conditionGradeId}
+            </if>
+            <if test="stockStatus != null">
+                and u.stock_status = #{stockStatus}
+            </if>
+            <if test="recycleId != null">
+                and u.recycle_id = #{recycleId}
+            </if>
+            <if test="bookId != null">
+                and u.book_id = #{bookId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and u.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and u.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by u.used_book_id desc
+    </select>
+</mapper>

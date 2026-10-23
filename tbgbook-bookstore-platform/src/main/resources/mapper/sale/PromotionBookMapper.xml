@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  促销活动商品 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的（后端 CLAUDE.md §五）；不写 SELECT *；一律 #{}
+  ⚠️ biz_promotion_book **没有 del_flag**（关系行只有「在 / 不在」，移除即物理删行），
+     故查询里没有 `del_flag = '0'`。
+  ⚠️ isbn / title 是**瞬态展示字段**（契约 resp_extra）—— 本表没有冗余列，
+     由 JOIN biz_book 取；**不过滤书的 del_flag**：书被软删时仍要能显示书名，
+     否则运营看到的活动商品会莫名少一行（与快照对比的同一处理）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.PromotionBookMapper">
+
+    <resultMap type="PromotionBook" id="PromotionBookResult">
+        <result property="relId"         column="rel_id"         />
+        <result property="promotionId"   column="promotion_id"   />
+        <result property="bookId"        column="book_id"        />
+        <result property="activityPrice" column="activity_price" />
+        <result property="limitQty"      column="limit_qty"      />
+        <result property="createTime"    column="create_time"    />
+        <!-- 瞬态展示字段（契约 resp_extra）：由 JOIN 填充，不落本表 -->
+        <result property="isbn"          column="isbn"           />
+        <result property="title"         column="title"          />
+    </resultMap>
+
+    <select id="selectPromotionBookList" parameterType="PromotionBook" resultMap="PromotionBookResult">
+        select r.rel_id, r.promotion_id, r.book_id, r.activity_price, r.limit_qty, r.create_time,
+               b.isbn  as isbn,
+               b.title as title
+        from biz_promotion_book r
+        left join biz_book b on b.book_id = r.book_id
+        <where>
+            <if test="promotionId != null">
+                and r.promotion_id = #{promotionId}
+            </if>
+            <if test="bookId != null">
+                and r.book_id = #{bookId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and r.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and r.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by r.rel_id asc
+    </select>
+
+    <delete id="deleteByPromotionIds">
+        delete from biz_promotion_book where promotion_id in
+        <foreach collection="promotionIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <select id="countByPromotionId" resultType="int">
+        select count(*) from biz_promotion_book where promotion_id = #{promotionId}
+    </select>
+</mapper>

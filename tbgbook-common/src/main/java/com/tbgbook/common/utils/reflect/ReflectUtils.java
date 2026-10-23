@@ -6,6 +6,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Date;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
@@ -202,6 +204,40 @@ public class ReflectUtils
                         else
                         {
                             args[i] = DateUtil.getJavaDate((Double) args[i]);
+                        }
+                    }
+                    else if (cs[i] == LocalDateTime.class)
+                    {
+                        // 2026-09-22 新增：setter 形参是 java.time 时的转换分支。
+                        // 缺了它，Excel 导入把字符串日期交给 LocalDateTime 形参会直接抛
+                        // IllegalArgumentException（反射不做隐式类型转换）。
+                        if (args[i] instanceof String)
+                        {
+                            args[i] = DateUtils.parseLocalDateTime(args[i]);
+                        }
+                        else if (args[i] instanceof Double)
+                        {
+                            args[i] = DateUtils.toLocalDateTime(DateUtil.getJavaDate((Double) args[i]));
+                        }
+                        else if (args[i] instanceof Date)
+                        {
+                            // POI 的日期格式单元格经 getCellValue 后就是 java.util.Date，别漏这一支
+                            args[i] = DateUtils.toLocalDateTime((Date) args[i]);
+                        }
+                    }
+                    else if (cs[i] == LocalDate.class)
+                    {
+                        if (args[i] instanceof String)
+                        {
+                            args[i] = DateUtils.parseLocalDate(args[i]);
+                        }
+                        else if (args[i] instanceof Double)
+                        {
+                            args[i] = DateUtils.toLocalDate(DateUtil.getJavaDate((Double) args[i]));
+                        }
+                        else if (args[i] instanceof Date)
+                        {
+                            args[i] = DateUtils.toLocalDate((Date) args[i]);
                         }
                     }
                     else if (cs[i] == boolean.class || cs[i] == Boolean.class)

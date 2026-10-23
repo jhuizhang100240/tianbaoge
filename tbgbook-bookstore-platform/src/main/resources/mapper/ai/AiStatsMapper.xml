@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.ai.mapper.AiStatsMapper">
+
+    <select id="selectHotBooks" resultType="java.util.Map">
+        select b.book_id      as bookId,
+               b.title        as title,
+               b.cover_url    as coverUrl,
+               (coalesce(b.sale_count, 0) + count(br.borrow_id) * 2) as heat
+        from biz_book b
+        left join biz_borrow br
+               on br.book_id = b.book_id
+              and br.borrow_time &gt;= date_sub(now(), interval 90 day)
+        where b.del_flag = '0'
+          and b.status = 1
+        group by b.book_id, b.title, b.cover_url, b.sale_count
+        order by heat desc, b.book_id asc
+        limit #{limit}
+    </select>
+
+    <select id="selectNewBooks" resultType="java.util.Map">
+        select b.book_id   as bookId,
+               b.title     as title,
+               b.cover_url as coverUrl
+        from biz_book b
+        where b.del_flag = '0'
+          and b.status = 1
+        order by b.book_id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectSelectionMetrics" resultType="java.util.Map">
+        select b.book_id   as bookId,
+               b.title     as title,
+               b.isbn      as isbn,
+               (select coalesce(sum(s.qty_available), 0)
+                  from biz_stock s where s.book_id = b.book_id) as stock,
+               coalesce(b.sale_count, 0) as saleCount,
+               (select count(*)
+                  from biz_borrow br
+                 where br.book_id = b.book_id
+                   and br.borrow_time &gt;= date_sub(now(), interval 90 day)) as borrow90
+        from biz_book b
+        where b.del_flag = '0'
+          and b.status = 1
+        order by b.sale_count desc, b.book_id asc
+        limit #{limit}
+    </select>
+
+</mapper>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  教材清单明细 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 聚合/统计（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.TextbookListItemMapper">
+
+    <resultMap type="TextbookListItem" id="TextbookListItemResult">
+        <result property="itemId"     column="item_id"     />
+        <result property="listId"     column="list_id"     />
+        <result property="bookId"     column="book_id"     />
+        <result property="isbn"       column="isbn"        />
+        <result property="title"      column="title"       />
+        <result property="price"      column="price"       />
+        <result property="major"      column="major"       />
+        <result property="term"       column="term"        />
+        <result property="college"    column="college"     />
+        <result property="reserveQty" column="reserve_qty" />
+        <result property="arrivedQty" column="arrived_qty" />
+        <result property="pickedQty"  column="picked_qty"  />
+        <result property="remainQty"  column="remain_qty"  />
+        <result property="status"     column="status"      />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectTextbookListItemVo">
+        select item_id, list_id, book_id, isbn, title, price,
+               major, term, college,
+               reserve_qty, arrived_qty, picked_qty, remain_qty, status,
+               create_time, update_time
+        from biz_textbook_list_item
+    </sql>
+
+    <select id="selectTextbookListItemList" parameterType="TextbookListItem" resultMap="TextbookListItemResult">
+        <include refid="selectTextbookListItemVo"/>
+        <where>
+            <if test="listId != null">
+                and list_id = #{listId}
+            </if>
+            <if test="bookId != null">
+                and book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and isbn = #{isbn}
+            </if>
+            <if test="status != null and status != ''">
+                and status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by list_id asc, item_id asc
+    </select>
+
+    <!--
+      聚合一份清单的统计列，回写主表用。
+      别名刻意与 TextbookList 的属性名同名，MyBatis 按列标签直接映射，省一个 DTO。
+      清单无明细时 count 为 0、sum 为 null —— 用 ifnull 兜平，调用方不必判空分支。
+    -->
+    <select id="selectStatistics" resultType="TextbookList">
+        select count(*)                  as bookKindCount,
+               ifnull(sum(reserve_qty), 0) as reserveQty,
+               ifnull(sum(arrived_qty), 0) as arrivedQty,
+               ifnull(sum(picked_qty), 0)  as pickedQty
+        from biz_textbook_list_item
+        where list_id = #{listId}
+    </select>
+
+    <!--
+      「未关联到有效图书」的明细行数：左连 biz_book 后仍为 null 的即为未关联。
+      biz_book 已逻辑删除（del_flag='2'）的也计入 —— 对发布而言那本书已不可用。
+    -->
+    <select id="countUnlinkedItems" resultType="java.lang.Long">
+        select count(*)
+        from biz_textbook_list_item i
+        left join biz_book b on b.book_id = i.book_id and b.del_flag = '0'
+        where i.list_id = #{listId} and b.book_id is null
+    </select>
+
+    <!-- 同一清单内是否已有同一本书（表上无 (list_id, book_id) 唯一索引，重复只能由服务端挡） -->
+    <select id="countSameBook" resultType="java.lang.Long">
+        select count(*)
+        from biz_textbook_list_item
+        where list_id = #{listId} and book_id = #{bookId}
+        <if test="excludeItemId != null">
+            and item_id != #{excludeItemId}
+        </if>
+    </select>
+
+    <delete id="deleteByListId">
+        delete from biz_textbook_list_item where list_id = #{listId}
+    </delete>
+</mapper>

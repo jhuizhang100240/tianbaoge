@@ -1,6 +1,6 @@
 package com.tbgbook.quartz.domain;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -10,6 +10,7 @@ import com.tbgbook.common.annotation.Excel;
 import com.tbgbook.common.annotation.Excel.ColumnType;
 import com.tbgbook.common.constant.ScheduleConstants;
 import com.tbgbook.common.core.domain.BaseEntity;
+import com.tbgbook.common.utils.DateUtils;
 import com.tbgbook.common.utils.StringUtils;
 import com.tbgbook.quartz.util.CronUtils;
 
@@ -111,11 +112,13 @@ public class SysJob extends BaseEntity
     }
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    public Date getNextValidTime()
+    public LocalDateTime getNextValidTime()
     {
         if (StringUtils.isNotEmpty(cronExpression))
         {
-            return CronUtils.getNextExecution(cronExpression);
+            // CronUtils 保持返回 java.util.Date —— Quartz 的 CronExpression 只接受 Date，
+            // 转换收在这一处出口，避免 java.time 渗进 Quartz 的 API 边界
+            return DateUtils.toLocalDateTime(CronUtils.getNextExecution(cronExpression));
         }
         return null;
     }

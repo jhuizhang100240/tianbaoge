@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.borrow.mapper.DepositLogMapper">
+
+    <resultMap type="DepositLog" id="DepositLogResult">
+        <result property="logId"        column="log_id"        />
+        <result property="storeId"      column="store_id"      />
+        <result property="memberId"     column="member_id"     />
+        <result property="changeType"   column="change_type"   />
+        <result property="amountChange" column="amount_change" />
+        <result property="depositAfter" column="deposit_after" />
+        <result property="payMethod"    column="pay_method"    />
+        <result property="refNo"        column="ref_no"        />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+        <result property="remark"       column="remark"        />
+    </resultMap>
+
+    <select id="selectDepositLogList" parameterType="DepositLog" resultMap="DepositLogResult">
+        select d.log_id, d.store_id, d.member_id, d.change_type, d.amount_change,
+               d.deposit_after, d.pay_method, d.ref_no, d.create_by, d.create_time, d.remark
+        from biz_deposit_log d
+        <where>
+            <if test="memberId != null">
+                and d.member_id = #{memberId}
+            </if>
+            <if test="changeType != null">
+                and d.change_type = #{changeType}
+            </if>
+            <if test="refNo != null and refNo != ''">
+                and d.ref_no = #{refNo}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and d.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and d.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by d.log_id desc
+    </select>
+</mapper>

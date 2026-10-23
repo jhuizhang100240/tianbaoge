@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.analysis.mapper.MetricDailyMapper">
+
+    <insert id="upsert" parameterType="com.tbgbook.bookstore.analysis.domain.MetricDaily">
+        insert into biz_metric_daily
+            (store_id, metric_date, metric_code, metric_name, metric_value, dim_type, dim_value, create_time)
+        values
+            (#{storeId}, #{metricDate}, #{metricCode}, #{metricName}, #{metricValue},
+             #{dimType}, #{dimValue}, #{createTime})
+        on duplicate key update
+            metric_name = values(metric_name),
+            metric_value = values(metric_value),
+            create_time = values(create_time)
+    </insert>
+</mapper>

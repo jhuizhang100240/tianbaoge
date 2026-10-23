@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书信息变更日志 Mapper XML（只读）
+  ⚠️ 本表只增不改不删（FR-4.1.9）：XML 里**没有** insert/update/delete ——
+     写入由 BookServiceImpl 经 BaseMapper.insert 完成。
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookChangeLogMapper">
+
+    <resultMap type="BookChangeLog" id="BookChangeLogResult">
+        <result property="logId"        column="log_id"        />
+        <result property="storeId"      column="store_id"      />
+        <result property="bookId"       column="book_id"       />
+        <result property="fieldName"    column="field_name"    />
+        <result property="fieldLabel"   column="field_label"   />
+        <result property="beforeValue"  column="before_value"  />
+        <result property="afterValue"   column="after_value"   />
+        <result property="createBy"     column="create_by"     />
+        <result property="createTime"   column="create_time"   />
+    </resultMap>
+
+    <select id="selectBookChangeLogList" parameterType="BookChangeLog" resultMap="BookChangeLogResult">
+        select l.log_id, l.store_id, l.book_id, l.field_name, l.field_label,
+               l.before_value, l.after_value, l.create_by, l.create_time
+        from biz_book_change_log l
+        <where>
+            <if test="bookId != null">
+                and l.book_id = #{bookId}
+            </if>
+            <if test="fieldName != null and fieldName != ''">
+                and l.field_name = #{fieldName}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and l.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and l.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by l.log_id desc
+        <!--
+          可选上限：图书全景详情（GET /book/book/{bookId}/detail）只要最近 N 条，
+          走 params.limit（实体上的瞬态 map）。列表端点不传该键 → 不产生 limit 子句。
+          ⚠️ 与 PageHelper 不冲突：本键只在未调 startPage() 的调用路径上出现。
+        -->
+        <if test="params.limit != null">
+            limit #{params.limit}
+        </if>
+    </select>
+</mapper>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书批量导入明细行 Mapper XML（只读）
+  ⚠️ 本表只由解析阶段写入、执行阶段读取：XML 里**没有** insert/update/delete ——
+     写入由 BookImportBatchServiceImpl 经 BaseMapper.insert 完成。
+  ⚠️ raw_data 是 MySQL json 列，接口文档声明为 object，故必须挂 JacksonTypeHandler，
+     否则读出来是字符串。（实体上的 @TableName(autoResultMap=true) 只管 MP 自动生成的
+     resultMap，管不到本文件里手写的这个，所以这里要显式再声明一次。）
+  ⚠️ 不写 SELECT *；一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookImportRowMapper">
+
+    <resultMap type="BookImportRow" id="BookImportRowResult">
+        <result property="rowId"     column="row_id"     />
+        <result property="batchId"   column="batch_id"   />
+        <result property="rowNo"     column="row_no"     />
+        <result property="isbn"      column="isbn"       />
+        <result property="title"     column="title"      />
+        <result property="rowStatus" column="row_status" />
+        <result property="errorMsg"  column="error_msg"  />
+        <result property="rawData"   column="raw_data"
+                typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler" />
+    </resultMap>
+
+    <!-- 列表页不返回 raw_data：整行快照对前端表格无用，逐行带上是纯放大响应体 -->
+    <resultMap type="BookImportRow" id="BookImportRowBriefResult">
+        <result property="rowId"     column="row_id"     />
+        <result property="batchId"   column="batch_id"   />
+        <result property="rowNo"     column="row_no"     />
+        <result property="isbn"      column="isbn"       />
+        <result property="title"     column="title"      />
+        <result property="rowStatus" column="row_status" />
+        <result property="errorMsg"  column="error_msg"  />
+    </resultMap>
+
+    <sql id="selectImportRowVo">
+        select r.row_id, r.batch_id, r.row_no, r.isbn, r.title, r.row_status, r.error_msg
+    </sql>
+
+    <select id="selectImportRowList" parameterType="BookImportRow" resultMap="BookImportRowBriefResult">
+        <include refid="selectImportRowVo"/>
+        from biz_book_import_row r
+        <where>
+            <if test="batchId != null">
+                and r.batch_id = #{batchId}
+            </if>
+            <if test="rowStatus != null">
+                and r.row_status = #{rowStatus}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and r.isbn = #{isbn}
+            </if>
+        </where>
+        order by r.row_no asc
+    </select>
+
+    <!-- 执行阶段用：要 raw_data，故走带 typeHandler 的完整 resultMap -->
+    <select id="selectImportableRows" resultMap="BookImportRowResult">
+        select r.row_id, r.batch_id, r.row_no, r.isbn, r.title, r.row_status, r.error_msg, r.raw_data
+        from biz_book_import_row r
+        where r.batch_id = #{batchId}
+          and r.row_status in (1, 2)
+        order by r.row_no asc
+    </select>
+
+    <select id="countByStatus" resultType="long">
+        select count(1) from biz_book_import_row
+        where batch_id = #{batchId} and row_status = #{rowStatus}
+    </select>
+</mapper>

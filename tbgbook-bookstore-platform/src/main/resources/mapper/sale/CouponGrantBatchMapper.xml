@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  优惠券发放批次 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的；不写 SELECT *；一律 #{}
+  ⚠️ biz_coupon_grant_batch **没有 del_flag**（批次是操作记录）。
+  ⚠️ 后两个 select 是**跨域读会员域的表**（biz_member_tag_rel / biz_member，属阶段五）——
+     只读不写；圈选人群本就是发放批次的职责，表与种子数据已就绪（与库存预警扫描
+     读 biz_stock_flow 同一处置）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.CouponGrantBatchMapper">
+
+    <resultMap type="CouponGrantBatch" id="CouponGrantBatchResult">
+        <result property="batchId"      column="batch_id"      />
+        <result property="storeId"      column="store_id"      />
+        <result property="batchNo"      column="batch_no"      />
+        <result property="templateId"   column="template_id"   />
+        <result property="grantType"    column="grant_type"    />
+        <result property="targetType"   column="target_type"   />
+        <result property="targetValue"  column="target_value"  />
+        <result property="planQty"      column="plan_qty"      />
+        <result property="actualQty"    column="actual_qty"    />
+        <result property="receivedQty"  column="received_qty"  />
+        <result property="status"       column="status"        />
+        <result property="grantBy"      column="grant_by"      />
+        <result property="grantTime"    column="grant_time"    />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+    </resultMap>
+
+    <sql id="cols">
+        b.batch_id, b.store_id, b.batch_no, b.template_id, b.grant_type, b.target_type,
+        b.target_value, b.plan_qty, b.actual_qty, b.received_qty, b.status,
+        b.grant_by, b.grant_time, b.create_time, b.update_time
+    </sql>
+
+    <select id="selectCouponGrantBatchList" parameterType="CouponGrantBatch" resultMap="CouponGrantBatchResult">
+        select <include refid="cols" />
+        from biz_coupon_grant_batch b
+        <where>
+            <if test="batchNo != null and batchNo != ''">
+                and b.batch_no = #{batchNo}
+            </if>
+            <if test="templateId != null">
+                and b.template_id = #{templateId}
+            </if>
+            <if test="grantType != null">
+                and b.grant_type = #{grantType}
+            </if>
+            <if test="targetType != null">
+                and b.target_type = #{targetType}
+            </if>
+            <if test="status != null">
+                and b.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.batch_id desc
+    </select>
+
+    <select id="selectNextBatchId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_coupon_grant_batch'
+    </select>
+
+    <!-- 按标签圈选会员（跨域读 biz_member_tag_rel） -->
+    <select id="selectMemberIdsByTagIds" resultType="java.lang.Long">
+        select distinct r.member_id
+        from biz_member_tag_rel r
+        where r.tag_id in
+        <foreach collection="tagIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        order by r.member_id
+    </select>
+
+    <!-- 手工名单校验：只保留真实存在且正常的会员（跨域读 biz_member） -->
+    <select id="selectExistingMemberIds" resultType="java.lang.Long">
+        select m.member_id
+        from biz_member m
+        where m.member_id in
+        <foreach collection="memberIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          and m.status = 1
+        order by m.member_id
+    </select>
+
+    <!-- 按等级圈选会员（跨域读 biz_member）；只取 status=1 正常，冻结/黑名单/已注销不发券 -->
+    <select id="selectMemberIdsByLevelIds" resultType="java.lang.Long">
+        select m.member_id
+        from biz_member m
+        where m.level_id in
+        <foreach collection="levelIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          and m.status = 1
+        order by m.member_id
+    </select>
+</mapper>

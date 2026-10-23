@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员储值账户 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 余额原子/条件更新
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberBalanceMapper">
+
+    <resultMap type="MemberBalance" id="MemberBalanceResult">
+        <result property="balanceId"        column="balance_id"        />
+        <result property="memberId"         column="member_id"         />
+        <result property="principalBalance" column="principal_balance" />
+        <result property="giftBalance"      column="gift_balance"      />
+        <result property="totalBalance"     column="total_balance"     />
+        <result property="version"          column="version"           />
+        <result property="createTime"       column="create_time"       />
+        <result property="updateTime"       column="update_time"       />
+    </resultMap>
+
+    <sql id="selectMemberBalanceVo">
+        select b.balance_id, b.member_id, b.principal_balance, b.gift_balance,
+               b.total_balance, b.version, b.create_time, b.update_time
+        from biz_member_balance b
+    </sql>
+
+    <select id="selectMemberBalanceList" parameterType="MemberBalance" resultMap="MemberBalanceResult">
+        <include refid="selectMemberBalanceVo"/>
+        <where>
+            <if test="memberId != null">
+                and b.member_id = #{memberId}
+            </if>
+            <!-- 通用创建时间区间：与 addDateRange() 的 params[beginTime]/params[endTime] 约定一致 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.balance_id desc
+    </select>
+
+    <update id="addBalance">
+        update biz_member_balance
+        set total_balance = total_balance + #{principalDelta} + #{giftDelta},
+            principal_balance = principal_balance + #{principalDelta},
+            gift_balance = gift_balance + #{giftDelta},
+            version = version + 1,
+            update_time = now()
+        where member_id = #{memberId}
+    </update>
+
+    <!-- 条件更新：合计余额足够才扣（并发安全，不会超扣） -->
+    <update id="deductBalance">
+        update biz_member_balance
+        set principal_balance = principal_balance - #{principalPart},
+            gift_balance = gift_balance - #{giftPart},
+            total_balance = total_balance - #{amount},
+            version = version + 1,
+            update_time = now()
+        where member_id = #{memberId} and total_balance &gt;= #{amount}
+    </update>
+
+    <update id="refundBalance">
+        update biz_member_balance
+        set principal_balance = principal_balance + #{principalPart},
+            gift_balance = gift_balance + #{giftPart},
+            total_balance = total_balance + #{principalPart} + #{giftPart},
+            version = version + 1,
+            update_time = now()
+        where member_id = #{memberId}
+    </update>
+
+    <update id="syncBalanceSummary">
+        update biz_member m
+        join biz_member_balance b on b.member_id = m.member_id
+        set m.balance_principal = b.principal_balance,
+            m.balance_gift = b.gift_balance,
+            m.update_time = now()
+        where m.member_id = #{memberId}
+    </update>
+</mapper>

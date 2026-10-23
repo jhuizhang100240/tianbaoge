@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  积分批次 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + FEFO 扣减条件更新
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.PointBatchMapper">
+
+    <resultMap type="PointBatch" id="PointBatchResult">
+        <result property="batchId"      column="batch_id"      />
+        <result property="memberId"     column="member_id"     />
+        <result property="sourceType"   column="source_type"   />
+        <result property="totalPoints"  column="total_points"  />
+        <result property="usedPoints"   column="used_points"   />
+        <result property="remainPoints" column="remain_points" />
+        <result property="gainTime"     column="gain_time"     />
+        <result property="expireTime"   column="expire_time"   />
+        <result property="status"       column="status"        />
+        <result property="refNo"        column="ref_no"        />
+        <result property="createTime"   column="create_time"   />
+    </resultMap>
+
+    <sql id="selectPointBatchVo">
+        select b.batch_id, b.member_id, b.source_type, b.total_points, b.used_points,
+               b.remain_points, b.gain_time, b.expire_time, b.status, b.ref_no, b.create_time
+        from biz_point_batch b
+    </sql>
+
+    <select id="selectPointBatchList" parameterType="PointBatch" resultMap="PointBatchResult">
+        <include refid="selectPointBatchVo"/>
+        <where>
+            <if test="memberId != null">
+                and b.member_id = #{memberId}
+            </if>
+            <if test="status != null">
+                and b.status = #{status}
+            </if>
+            <if test="sourceType != null">
+                and b.source_type = #{sourceType}
+            </if>
+            <if test="refNo != null and refNo != ''">
+                and b.ref_no = #{refNo}
+            </if>
+            <!-- 过期时间区间：契约的 params[beginExpireTime]/params[endExpireTime] -->
+            <if test="params.beginExpireTime != null and params.beginExpireTime != ''">
+                and b.expire_time &gt;= #{params.beginExpireTime}
+            </if>
+            <if test="params.endExpireTime != null and params.endExpireTime != ''">
+                and b.expire_time &lt;= #{params.endExpireTime}
+            </if>
+            <!-- 通用创建时间区间 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.batch_id desc
+    </select>
+
+    <select id="selectAvailableBatches" resultMap="PointBatchResult">
+        <include refid="selectPointBatchVo"/>
+        where b.member_id = #{memberId}
+          and b.status = 1
+          and b.remain_points &gt; 0
+        order by b.expire_time asc, b.batch_id asc
+    </select>
+
+    <!-- FEFO 扣减：条件更新（剩余足够才扣）；影响 0 行 = 该批次已被并发抢占 -->
+    <update id="consumeFromBatch">
+        update biz_point_batch
+        set used_points = used_points + #{take},
+            remain_points = remain_points - #{take}
+        where batch_id = #{batchId}
+          and status = 1
+          and remain_points &gt;= #{take}
+    </update>
+
+    <update id="markBatchUsedUp">
+        update biz_point_batch
+        set status = 2
+        where batch_id = #{batchId}
+          and status = 1
+          and remain_points = 0
+    </update>
+
+    <!-- 即将到期明细：时间窗口由应用侧传入（A32：禁止用库 now() 做业务时间比较） -->
+    <select id="selectExpiringItems" resultType="PointExpiringItem">
+        select b.member_id as memberId,
+               m.member_no as memberNo,
+               m.nickname as nickname,
+               b.remain_points as remainPoints,
+               b.expire_time as expireTime
+        from biz_point_batch b
+        join biz_member m on m.member_id = b.member_id
+        where b.status = 1
+          and b.remain_points &gt; 0
+          and b.expire_time &gt;= #{now}
+          and b.expire_time &lt;= #{cutoff}
+          <if test="memberId != null">
+              and b.member_id = #{memberId}
+          </if>
+        order by b.expire_time asc, b.batch_id asc
+    </select>
+</mapper>

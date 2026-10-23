@@ -5,10 +5,13 @@ import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.common.auth.CredentialsProviderFactory;
 import com.aliyun.oss.common.auth.EnvironmentVariableCredentialsProvider;
 import com.aliyun.oss.model.DeleteObjectsRequest;
+import com.aliyun.oss.model.OSSObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -46,5 +49,61 @@ public class AliyunOSSOperator {
         }
 
         return endpoint.split("//")[0] + "//" + bucketName + "." + endpoint.split("//")[1] + "/" + objectName;
+    }
+
+    /**
+     * 按 {@link #upload} 返回的 URL 删除对象（知识库文档删除时清理存储残留）。
+     *
+     * <p>URL 形如 {@code https://<bucket>.<endpoint-host>/<objectName>}。
+     * 对象不存在时 OSS 删除同样返回成功（幂等）；调用方对删除失败一般只记警告。
+     *
+     * @param fileUrl 上传接口返回的完整 URL；为空时直接返回
+     */
+    public void deleteByUrl(String fileUrl) throws Exception {
+        if (fileUrl == null || fileUrl.isEmpty()) {
+            return;
+        }
+        URI uri = URI.create(fileUrl);
+        String host = uri.getHost();
+        if (host == null || uri.getPath() == null) {
+            return;
+        }
+        String bucketName = host.split("\\.")[0];
+        String objectName = uri.getPath().replaceFirst("^/", "");
+        OSS ossClient = new OSSClientBuilder().build(ossProperties.getEndpoint(),
+                CredentialsProviderFactory.newEnvironmentVariableCredentialsProvider());
+        try {
+            ossClient.deleteObject(bucketName, objectName);
+        } finally {
+            if (ossClient != null) {
+                ossClient.shutdown();
+            }
+        }
+    }
+
+    /**
+     * 按上传返回的 URL 下载对象（重建索引时回读原始文档）。
+     *
+     * @param fileUrl 上传接口返回的完整 URL
+     * @return 对象字节
+     */
+    public byte[] download(String fileUrl) throws Exception {
+        URI uri = URI.create(fileUrl);
+        String host = uri.getHost();
+        if (host == null || uri.getPath() == null) {
+            throw new IllegalArgumentException("invalid oss url: " + fileUrl);
+        }
+        String bucketName = host.split("\\.")[0];
+        String objectName = uri.getPath().replaceFirst("^/", "");
+        OSS ossClient = new OSSClientBuilder().build(ossProperties.getEndpoint(),
+                CredentialsProviderFactory.newEnvironmentVariableCredentialsProvider());
+        try (OSSObject object = ossClient.getObject(bucketName, objectName);
+                InputStream in = object.getObjectContent()) {
+            return in.readAllBytes();
+        } finally {
+            if (ossClient != null) {
+                ossClient.shutdown();
+            }
+        }
     }
 }

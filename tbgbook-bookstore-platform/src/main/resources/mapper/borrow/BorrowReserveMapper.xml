@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.borrow.mapper.BorrowReserveMapper">
+
+    <resultMap type="BorrowReserve" id="BorrowReserveResult">
+        <result property="reserveId"   column="reserve_id"   />
+        <result property="storeId"     column="store_id"     />
+        <result property="reserveNo"   column="reserve_no"   />
+        <result property="memberId"    column="member_id"    />
+        <result property="bookId"      column="book_id"      />
+        <result property="isbn"        column="isbn"         />
+        <result property="title"       column="title"        />
+        <result property="queueNo"     column="queue_no"     />
+        <result property="status"      column="status"       />
+        <result property="reserveTime" column="reserve_time" />
+        <result property="notifyTime"  column="notify_time"  />
+        <result property="expireTime"  column="expire_time"  />
+        <result property="pickupTime"  column="pickup_time"  />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateTime"  column="update_time"  />
+    </resultMap>
+
+    <select id="selectBorrowReserveList" parameterType="BorrowReserve" resultMap="BorrowReserveResult">
+        select r.reserve_id, r.store_id, r.reserve_no, r.member_id, r.book_id, r.isbn, r.title,
+               r.queue_no, r.status, r.reserve_time, r.notify_time, r.expire_time, r.pickup_time,
+               r.create_time, r.update_time
+        from biz_borrow_reserve r
+        <where>
+            <if test="reserveNo != null and reserveNo != ''">
+                and r.reserve_no = #{reserveNo}
+            </if>
+            <if test="memberId != null">
+                and r.member_id = #{memberId}
+            </if>
+            <if test="bookId != null">
+                and r.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and r.isbn = #{isbn}
+            </if>
+            <if test="status != null">
+                and r.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and r.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and r.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by r.reserve_id desc
+    </select>
+
+    <select id="selectNextQueueNo" resultType="java.lang.Integer">
+        select ifnull(max(r.queue_no), 0) + 1
+        from biz_borrow_reserve r
+        where r.book_id = #{bookId}
+          and r.status in (1, 2)
+    </select>
+
+    <update id="shiftQueueAfter">
+        update biz_borrow_reserve r
+        set r.queue_no = r.queue_no - 1,
+            r.update_time = now()
+        where r.book_id = #{bookId}
+          and r.queue_no &gt; #{queueNo}
+          and r.status in (1, 2)
+    </update>
+</mapper>

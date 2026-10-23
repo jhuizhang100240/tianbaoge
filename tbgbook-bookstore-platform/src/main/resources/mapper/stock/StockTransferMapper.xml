@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存调拨单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_stock_transfer **没有 del_flag**（单据用 status 三态取代逻辑删除）——
+     故查询里没有 `del_flag = '0'` 这一条，删行是真删。
+  ⚠️ 调出 / 调入库位名走 **LEFT JOIN**（不是 inner join）：库位被停用或软删后，
+     历史调拨单仍要能列出并显示当时的库位 —— inner join 会让这些单据凭空消失。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockTransferMapper">
+
+    <resultMap type="StockTransfer" id="StockTransferResult">
+        <result property="transferId"       column="transfer_id"        />
+        <result property="storeId"          column="store_id"           />
+        <result property="transferNo"       column="transfer_no"        />
+        <result property="fromLocationId"   column="from_location_id"   />
+        <result property="toLocationId"     column="to_location_id"     />
+        <result property="bookKind"         column="book_kind"          />
+        <result property="totalQty"         column="total_qty"          />
+        <result property="status"           column="status"             />
+        <result property="transferTime"     column="transfer_time"      />
+        <result property="createBy"         column="create_by"          />
+        <result property="createTime"       column="create_time"        />
+        <result property="updateBy"         column="update_by"          />
+        <result property="updateTime"       column="update_time"        />
+        <result property="remark"           column="remark"             />
+        <!-- 瞬态展示字段（契约 resp_extra）：表里没有对应列，由 JOIN 填充 -->
+        <result property="fromLocationCode" column="from_location_code" />
+        <result property="fromLocationName" column="from_location_name" />
+        <result property="fromLocationZone" column="from_location_zone" />
+        <result property="toLocationCode"   column="to_location_code"   />
+        <result property="toLocationName"   column="to_location_name"   />
+        <result property="toLocationZone"   column="to_location_zone"   />
+    </resultMap>
+
+    <select id="selectStockTransferList" parameterType="StockTransfer" resultMap="StockTransferResult">
+        select t.transfer_id, t.store_id, t.transfer_no,
+               t.from_location_id, t.to_location_id, t.book_kind, t.total_qty,
+               t.status, t.transfer_time,
+               t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
+               lf.location_code as from_location_code,
+               lf.location_name as from_location_name,
+               lf.zone          as from_location_zone,
+               lt.location_code as to_location_code,
+               lt.location_name as to_location_name,
+               lt.zone          as to_location_zone
+        from biz_stock_transfer t
+        left join biz_location lf on lf.location_id = t.from_location_id
+        left join biz_location lt on lt.location_id = t.to_location_id
+        <where>
+            <if test="transferNo != null and transferNo != ''">
+                and t.transfer_no = #{transferNo}
+            </if>
+            <if test="fromLocationId != null">
+                and t.from_location_id = #{fromLocationId}
+            </if>
+            <if test="toLocationId != null">
+                and t.to_location_id = #{toLocationId}
+            </if>
+            <if test="status != null">
+                and t.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.transfer_id desc
+    </select>
+
+    <!-- 预取下一个自增主键：transfer_no 是 NOT NULL + 唯一索引，插入前必须先给出值 -->
+    <select id="selectNextTransferId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_stock_transfer'
+    </select>
+</mapper>

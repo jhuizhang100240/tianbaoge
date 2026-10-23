@@ -480,6 +480,43 @@ public class ExcelUtil<T>
                             val = DateUtil.getJavaDate((Double) val);
                         }
                     }
+                    else if (LocalDateTime.class == fieldType)
+                    {
+                        // 2026-09-22 新增：实体改用 java.time 后，导入侧必须有对应分支，
+                        // 否则单元格里的日期只会被当作字符串丢给 setter（导出侧 parseDateToStr 早已支持）
+                        if (val instanceof String)
+                        {
+                            val = DateUtils.parseLocalDateTime(val);
+                        }
+                        else if (val instanceof Double)
+                        {
+                            // Excel 日期在 POI 里是序列号
+                            val = DateUtils.toLocalDateTime(DateUtil.getJavaDate((Double) val));
+                        }
+                        else if (val instanceof Date)
+                        {
+                            // ⚠️ 别漏这一支：getCellValue 对**日期格式的数值单元格**返回的是
+                            // java.util.Date（已由 DateUtil.getJavaDate 转过），不是 Double。
+                            // 只判 String/Double 时，真实 Excel 日期单元格会带着 Date 走到反射 setter，
+                            // 对 LocalDateTime 形参直接抛 IllegalArgumentException（实测踩到）
+                            val = DateUtils.toLocalDateTime((Date) val);
+                        }
+                    }
+                    else if (LocalDate.class == fieldType)
+                    {
+                        if (val instanceof String)
+                        {
+                            val = DateUtils.parseLocalDate(val);
+                        }
+                        else if (val instanceof Double)
+                        {
+                            val = DateUtils.toLocalDate(DateUtil.getJavaDate((Double) val));
+                        }
+                        else if (val instanceof Date)
+                        {
+                            val = DateUtils.toLocalDate((Date) val);
+                        }
+                    }
                     else if (Boolean.TYPE == fieldType || Boolean.class == fieldType)
                     {
                         val = Convert.toBool(val, false);

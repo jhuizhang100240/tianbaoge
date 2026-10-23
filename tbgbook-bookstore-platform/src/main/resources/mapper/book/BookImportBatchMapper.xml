@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书批量导入批次 Mapper XML
+  ⚠️ 本表**没有 del_flag**（不属于基础数据表），因此这里不写 del_flag 过滤条件 ——
+     抄基础数据表的 XML 会把删除标记当列查，直接报 Unknown column。
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookImportBatchMapper">
+
+    <resultMap type="BookImportBatch" id="BookImportBatchResult">
+        <result property="batchId"        column="batch_id"        />
+        <result property="storeId"        column="store_id"        />
+        <result property="batchNo"        column="batch_no"        />
+        <result property="fileName"       column="file_name"       />
+        <result property="fileUrl"        column="file_url"        />
+        <result property="totalRows"      column="total_rows"      />
+        <result property="validRows"      column="valid_rows"      />
+        <result property="warnRows"       column="warn_rows"       />
+        <result property="errorRows"      column="error_rows"      />
+        <result property="successRows"    column="success_rows"    />
+        <result property="failRows"       column="fail_rows"       />
+        <result property="importStrategy" column="import_strategy" />
+        <result property="status"         column="status"          />
+        <result property="progress"       column="progress"        />
+        <result property="failFileUrl"    column="fail_file_url"   />
+        <result property="createBy"       column="create_by"       />
+        <result property="createTime"     column="create_time"     />
+        <result property="updateBy"       column="update_by"       />
+        <result property="updateTime"     column="update_time"     />
+        <result property="remark"         column="remark"          />
+    </resultMap>
+
+    <select id="selectImportBatchList" parameterType="BookImportBatch" resultMap="BookImportBatchResult">
+        select b.batch_id, b.store_id, b.batch_no, b.file_name, b.file_url,
+               b.total_rows, b.valid_rows, b.warn_rows, b.error_rows,
+               b.success_rows, b.fail_rows, b.import_strategy, b.status,
+               b.progress, b.fail_file_url,
+               b.create_by, b.create_time, b.update_by, b.update_time, b.remark
+        from biz_book_import_batch b
+        <where>
+            <if test="batchNo != null and batchNo != ''">
+                and b.batch_no = #{batchNo}
+            </if>
+            <if test="status != null">
+                and b.status = #{status}
+            </if>
+            <if test="importStrategy != null">
+                and b.import_strategy = #{importStrategy}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.batch_id desc
+    </select>
+</mapper>

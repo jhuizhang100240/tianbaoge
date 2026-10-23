@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存调拨明细 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的（后端 CLAUDE.md §五）；不写 SELECT *；一律 #{}
+  ⚠️ isbn / title 是本表的**冗余列**（不是 JOIN 来的）—— 单据要能脱离图书表独立呈现：
+     图书改名后，历史单据应显示当时的书名。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockTransferItemMapper">
+
+    <resultMap type="StockTransferItem" id="StockTransferItemResult">
+        <result property="itemId"     column="item_id"     />
+        <result property="transferId" column="transfer_id" />
+        <result property="bookId"     column="book_id"     />
+        <result property="isbn"       column="isbn"        />
+        <result property="title"      column="title"       />
+        <result property="qty"        column="qty"         />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <select id="selectStockTransferItemList" parameterType="StockTransferItem" resultMap="StockTransferItemResult">
+        select t.item_id, t.transfer_id, t.book_id, t.isbn, t.title, t.qty, t.create_time
+        from biz_stock_transfer_item t
+        <where>
+            <if test="transferId != null">
+                and t.transfer_id = #{transferId}
+            </if>
+            <if test="bookId != null">
+                and t.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and t.isbn = #{isbn}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and t.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and t.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by t.item_id asc
+    </select>
+
+    <delete id="deleteByTransferIds">
+        delete from biz_stock_transfer_item where transfer_id in
+        <foreach collection="transferIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+</mapper>

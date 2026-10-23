@@ -12,3 +12,6 @@ offline_user.md
 .idea
 *.iws
 *.ipr
+
+### 本机私有配置（口令 / 密钥，NFR-S12）—— 模板见 application-local.example.yml
+application-local.yml

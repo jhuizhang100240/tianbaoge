@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员教育信息与学号认证 Mapper XML（1:1）
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询；不写 insert / update / delete
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberStudentMapper">
+
+    <resultMap type="MemberStudent" id="MemberStudentResult">
+        <result property="memberId"     column="member_id"      />
+        <result property="storeId"      column="store_id"       />
+        <result property="school"       column="school"         />
+        <result property="studentNo"    column="student_no"     />
+        <result property="realName"     column="real_name"      />
+        <result property="major"        column="major"          />
+        <result property="grade"        column="grade"          />
+        <result property="certStatus"   column="cert_status"    />
+        <result property="certType"     column="cert_type"      />
+        <result property="certImageUrl" column="cert_image_url" />
+        <result property="applyTime"    column="apply_time"     />
+        <result property="auditBy"      column="audit_by"       />
+        <result property="auditTime"    column="audit_time"     />
+        <result property="rejectReason" column="reject_reason"  />
+        <result property="createTime"   column="create_time"    />
+        <result property="updateTime"   column="update_time"    />
+    </resultMap>
+
+    <sql id="selectMemberStudentVo">
+        select s.member_id, s.store_id, s.school, s.student_no, s.real_name, s.major,
+               s.grade, s.cert_status, s.cert_type, s.cert_image_url, s.apply_time,
+               s.audit_by, s.audit_time, s.reject_reason, s.create_time, s.update_time
+        from biz_member_student s
+    </sql>
+
+    <select id="selectMemberStudentList" parameterType="MemberStudent" resultMap="MemberStudentResult">
+        <include refid="selectMemberStudentVo"/>
+        <where>
+            <if test="memberId != null">
+                and s.member_id = #{memberId}
+            </if>
+            <if test="certStatus != null">
+                and s.cert_status = #{certStatus}
+            </if>
+            <if test="certType != null">
+                and s.cert_type = #{certType}
+            </if>
+            <if test="school != null and school != ''">
+                and s.school like concat('%', #{school}, '%')
+            </if>
+            <if test="major != null and major != ''">
+                and s.major = #{major}
+            </if>
+            <if test="grade != null and grade != ''">
+                and s.grade = #{grade}
+            </if>
+        </where>
+        order by s.member_id desc
+    </select>
+</mapper>

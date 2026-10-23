@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  成本变更流水 Mapper XML
+  ⚠️ 本表**只增不删**，这里只有 select
+  ⚠️ 含成本金额，接口只对 inventory:cost:view 开放（权限在 Controller 的 @PreAuthorize）
+  ⚠️ 不写 SELECT *，一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.CostChangeLogMapper">
+
+    <resultMap type="CostChangeLog" id="CostChangeLogResult">
+        <result property="logId"       column="log_id"       />
+        <result property="storeId"     column="store_id"     />
+        <result property="bookId"      column="book_id"      />
+        <result property="changeType"  column="change_type"  />
+        <result property="qty"         column="qty"          />
+        <result property="unitCost"    column="unit_cost"    />
+        <result property="beforeCost"  column="before_cost"  />
+        <result property="afterCost"   column="after_cost"   />
+        <result property="refNo"       column="ref_no"       />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"  column="create_time"  />
+        <!-- 非表字段：ISBN 用于筛选、书名用于展示 -->
+        <result property="isbn"        column="book_isbn"    />
+        <result property="title"       column="book_title"   />
+    </resultMap>
+
+    <sql id="selectCostChangeLogVo">
+        select g.log_id, g.store_id, g.book_id, g.change_type, g.qty, g.unit_cost,
+               g.before_cost, g.after_cost, g.ref_no, g.create_by, g.create_time,
+               b.isbn as book_isbn, b.title as book_title
+        from biz_cost_change_log g
+        left join biz_book b on b.book_id = g.book_id
+    </sql>
+
+    <select id="selectCostChangeLogList" parameterType="CostChangeLog" resultMap="CostChangeLogResult">
+        <include refid="selectCostChangeLogVo"/>
+        <where>
+            <if test="bookId != null">
+                and g.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and b.isbn = #{isbn}
+            </if>
+            <if test="changeType != null">
+                and g.change_type = #{changeType}
+            </if>
+            <if test="refNo != null and refNo != ''">
+                and g.ref_no = #{refNo}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and g.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and g.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by g.log_id desc
+    </select>
+</mapper>

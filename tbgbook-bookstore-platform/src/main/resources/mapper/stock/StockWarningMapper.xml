@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存预警 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 扫描取数（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+  ⚠️ biz_stock_warning **没有 del_flag 与 create_by/update_by/remark**
+     （预警由系统生成、人不手工删），故查询里没有 `del_flag = '0'`，
+     resultMap 里也没有那三项。
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockWarningMapper">
+
+    <resultMap type="StockWarning" id="StockWarningResult">
+        <result property="warningId"    column="warning_id"    />
+        <result property="storeId"      column="store_id"      />
+        <result property="bookId"       column="book_id"       />
+        <result property="isbn"         column="isbn"          />
+        <result property="title"        column="title"         />
+        <result property="warningType"  column="warning_type"  />
+        <result property="currentQty"   column="current_qty"   />
+        <result property="safetyQty"    column="safety_qty"    />
+        <result property="gapQty"       column="gap_qty"       />
+        <result property="avgSale30d"   column="avg_sale_30d"  />
+        <result property="saleDays30d"  column="sale_days_30d" />
+        <result property="suggestQty"   column="suggest_qty"   />
+        <result property="lastSaleTime" column="last_sale_time"/>
+        <result property="handleStatus" column="handle_status" />
+        <result property="handleBy"     column="handle_by"     />
+        <result property="handleTime"   column="handle_time"   />
+        <result property="handleRemark" column="handle_remark" />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+    </resultMap>
+
+    <sql id="cols">
+        w.warning_id, w.store_id, w.book_id, w.isbn, w.title, w.warning_type,
+        w.current_qty, w.safety_qty, w.gap_qty, w.avg_sale_30d, w.sale_days_30d,
+        w.suggest_qty, w.last_sale_time, w.handle_status, w.handle_by, w.handle_time,
+        w.handle_remark, w.create_time, w.update_time
+    </sql>
+
+    <select id="selectStockWarningList" parameterType="StockWarning" resultMap="StockWarningResult">
+        select <include refid="cols" />
+        from biz_stock_warning w
+        <where>
+            <if test="warningType != null">
+                and w.warning_type = #{warningType}
+            </if>
+            <if test="handleStatus != null">
+                and w.handle_status = #{handleStatus}
+            </if>
+            <if test="bookId != null">
+                and w.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and w.isbn = #{isbn}
+            </if>
+            <if test="title != null and title != ''">
+                and w.title like concat('%', #{title}, '%')
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and w.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and w.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by w.warning_id desc
+    </select>
+
+    <!-- 扫描做「不重复生成」比对用：只看待处理的 -->
+    <select id="selectPendingWarnings" resultMap="StockWarningResult">
+        select <include refid="cols" />
+        from biz_stock_warning w
+        where w.handle_status = 1
+    </select>
+
+    <!-- 一次取回判定四类预警所需的全部原始数据（每本书一行） -->
+    <select id="selectScanCandidates" resultType="WarningCandidate">
+        select b.book_id          as bookId,
+               b.isbn             as isbn,
+               b.title            as title,
+               b.status           as bookStatus,
+               ifnull(s.available_qty, 0) as availableQty,
+               ifnull(s.total_qty, 0)     as totalQty,
+               ifnull(s.safety_qty, 0)    as safetyQtyInDb,
+               ifnull(f.sale_qty_30d, 0)  as saleQty30d,
+               f.last_sale_time           as lastSaleTime,
+               f.first_flow_time          as firstFlowTime,
+               e.textbook_end_time        as textbookEndTime
+        from biz_book b
+        left join (
+            select book_id,
+                   sum(qty_available) as available_qty,
+                   sum(qty_available + qty_locked + qty_borrowed + qty_damaged) as total_qty,
+                   max(safety_qty) as safety_qty
+            from biz_stock
+            group by book_id
+        ) s on s.book_id = b.book_id
+        left join (
+            select book_id,
+                   sum(case when biz_type = 2 and create_time &gt;= #{since}
+                            then -qty_change else 0 end) as sale_qty_30d,
+                   max(case when biz_type = 2 then create_time end) as last_sale_time,
+                   min(create_time) as first_flow_time
+            from biz_stock_flow
+            group by book_id
+        ) f on f.book_id = b.book_id
+        left join (
+            select i.book_id, min(l.end_time) as textbook_end_time
+            from biz_textbook_list_item i
+            join biz_textbook_list l on l.list_id = i.list_id
+            where l.status = 2
+              and l.end_time is not null
+              and l.end_time &gt;= #{nowTime}
+            group by i.book_id
+        ) e on e.book_id = b.book_id
+        where b.del_flag = '0'
+        order by b.book_id
+    </select>
+</mapper>

@@ -1,6 +1,8 @@
 package com.tbgbook.common.core.controller;
 
 import java.beans.PropertyEditorSupport;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import org.slf4j.Logger;
@@ -31,7 +33,14 @@ public class BaseController
     protected final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     /**
-     * 将前台传递过来的日期格式的字符串，自动转化为Date类型
+     * 将前台传递过来的日期格式的字符串，自动转化为日期类型
+     * <p>
+     * 实体自 2026-09-22 起统一用 {@code java.time}，故三种类型都要注册编辑器：
+     * 查询串里的实体字段走这里；单个 {@code @RequestParam} / {@code @PathVariable} 则由
+     * {@code application.yml} 的 {@code spring.mvc.format.*} 覆盖。
+     * <p>
+     * java.time 的编辑器比 Date 宽松 —— 纯日期串（{@code 2026-09-22}）也接受，按当日零点处理，
+     * 因为前端列表的日期筛选可能只传日期不带时间。
      */
     @InitBinder
     public void initBinder(WebDataBinder binder)
@@ -43,6 +52,26 @@ public class BaseController
             public void setAsText(String text)
             {
                 setValue(DateUtils.parseDate(text));
+            }
+        });
+
+        // LocalDateTime 类型转换
+        binder.registerCustomEditor(LocalDateTime.class, new PropertyEditorSupport()
+        {
+            @Override
+            public void setAsText(String text)
+            {
+                setValue(DateUtils.parseLocalDateTime(text));
+            }
+        });
+
+        // LocalDate 类型转换
+        binder.registerCustomEditor(LocalDate.class, new PropertyEditorSupport()
+        {
+            @Override
+            public void setAsText(String text)
+            {
+                setValue(DateUtils.parseLocalDate(text));
             }
         });
     }

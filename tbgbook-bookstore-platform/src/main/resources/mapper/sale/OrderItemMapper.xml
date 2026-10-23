@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  订单明细 Mapper XML
+  ⚠️ biz_order_item 只有 create_time，没有 del_flag / update_* / create_by / remark。
+  ⚠️ cost_price 是成本类字段，由 Service 按 book:cost:view 裁剪（XML 照常查出，Service 置 null）。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.OrderItemMapper">
+
+    <resultMap type="OrderItem" id="OrderItemResult">
+        <result property="itemId"         column="item_id"         />
+        <result property="orderId"        column="order_id"        />
+        <result property="orderNo"        column="order_no"        />
+        <result property="bookId"         column="book_id"         />
+        <result property="usedBookId"     column="used_book_id"    />
+        <result property="isbn"           column="isbn"            />
+        <result property="title"          column="title"           />
+        <result property="bookType"       column="book_type"       />
+        <result property="conditionGrade" column="condition_grade" />
+        <result property="priceType"      column="price_type"      />
+        <result property="originPrice"    column="origin_price"    />
+        <result property="unitPrice"      column="unit_price"      />
+        <result property="qty"            column="qty"             />
+        <result property="amount"         column="amount"          />
+        <result property="singleDiscount" column="single_discount" />
+        <result property="memberDiscount" column="member_discount" />
+        <result property="couponShare"    column="coupon_share"    />
+        <result property="pointShare"     column="point_share"     />
+        <result property="shareAmount"    column="share_amount"    />
+        <result property="costPrice"      column="cost_price"      />
+        <result property="createTime"     column="create_time"     />
+    </resultMap>
+
+    <select id="selectOrderItemList" parameterType="OrderItem" resultMap="OrderItemResult">
+        select i.item_id, i.order_id, i.order_no, i.book_id, i.used_book_id, i.isbn, i.title,
+               i.book_type, i.condition_grade, i.price_type, i.origin_price, i.unit_price,
+               i.qty, i.amount, i.single_discount, i.member_discount, i.coupon_share,
+               i.point_share, i.share_amount, i.cost_price, i.create_time
+        from biz_order_item i
+        <where>
+            <if test="orderId != null">
+                and i.order_id = #{orderId}
+            </if>
+            <if test="orderNo != null and orderNo != ''">
+                and i.order_no = #{orderNo}
+            </if>
+            <if test="bookId != null">
+                and i.book_id = #{bookId}
+            </if>
+            <if test="usedBookId != null">
+                and i.used_book_id = #{usedBookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and i.isbn = #{isbn}
+            </if>
+            <if test="bookType != null">
+                and i.book_type = #{bookType}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and i.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and i.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by i.item_id asc
+    </select>
+    <delete id="deleteByOrderIds">
+        delete from biz_order_item where order_id in
+        <foreach collection="orderIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+</mapper>

@@ -1,3 +1,127 @@
+# ============================================================================
+# 共享配置 —— 与运行环境无关的部分
+# ----------------------------------------------------------------------------
+# 约定（后端 CLAUDE.md §八）：
+#   · application.yml      —— 共享配置 + 激活哪个 profile（本文件）
+#   · application-{dev,test,prod}.yml —— 只放数据源、日志级别、第三方配置与环境开关
+#   · application-local.yml —— 本机私有配置（口令 / 密钥），**已 gitignore**
+#                             从 application-local.example.yml 复制后填值
+# ----------------------------------------------------------------------------
+
 spring:
   profiles:
+    # 部署时用 --spring.profiles.active=prod 覆盖；三份 profile 内容不同，切换是真实生效的
     active: dev
+  application:
+    name: tbgbook
+  # 资源信息（国际化）
+  messages:
+    basename: i18n/messages
+  # Web 绑定格式（2026-09-22 新增）
+  # 实体自 2026-09-22 起统一用 java.time，此处让单个 @RequestParam / @PathVariable
+  # 也按「yyyy-MM-dd HH:mm:ss」/「yyyy-MM-dd」解析（查询串里的实体字段走 BaseController 的 @InitBinder）
+  # 与根 CLAUDE.md §6.1 的时间格式契约保持一致
+  mvc:
+    format:
+      date: yyyy-MM-dd
+      date-time: yyyy-MM-dd HH:mm:ss
+  # 文件上传限制（NFR-S13：类型白名单在 FileUploadUtils，大小限制在此）
+  servlet:
+    multipart:
+      # 知识库单文件契约上限 20MB（FR-4.7.6）；容器层留余量，由服务层给出确定的 413
+      max-file-size: 25MB
+      max-request-size: 30MB
+
+# 项目相关配置
+ruoyi:
+  # 名称（出现在验证码页脚、公告署名等处）
+  name: 天宝阁书店
+  # 版本
+  version: 3.9.2
+  # 版权年份
+  copyrightYear: 2026
+  # 获取ip地址开关
+  addressEnabled: false
+  # 验证码类型 math 数字计算 char 字符验证
+  captchaType: math
+
+# 用户配置
+user:
+  password:
+    # 密码最大错误次数
+    maxRetryCount: 5
+    # 密码锁定时间（默认10分钟）
+    lockTime: 10
+
+# token 配置
+token:
+  # 令牌自定义标识（前端 axios 注入 Authorization: Bearer <token>，禁止自创其它头）
+  header: Authorization
+  # 令牌有效期（默认30分钟）
+  expireTime: 300
+
+# MyBatisPlus配置
+mybatis-plus:
+  # 搜索指定包别名
+  typeAliasesPackage: com.tbgbook.**.domain
+  # 配置mapper的扫描，找到所有的mapper.xml映射文件（新增模块不需要注册扫描路径）
+  mapperLocations: classpath*:mapper/**/*Mapper.xml
+  # 全局配置
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto            # 主键自增
+      logic-delete-field: delFlag   # 逻辑删除字段名
+      logic-delete-value: 2    # 已删除（沿用 RuoYi 约定：0=存在 / 2=删除，不是 0/1）
+      logic-not-delete-value: 0 # 未删除
+  configuration:
+    map-underscore-to-camel-case: true    # 字段与属性自动转换为驼峰命名
+    cache-enabled: true
+    use-generated-keys: true
+    default-executor-type: simple
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+# PageHelper 分页插件
+# ⚠️ MP 的分页插件未注册（有意取舍，见后端 CLAUDE.md D3）：
+#    selectPage / selectMapsPage / IPage 不可用，一律 startPage() → 查 → getDataTable(list)
+pagehelper:
+  helperDialect: mysql
+  supportMethodsArguments: true
+  params: count=countSql
+
+# 接口文档分组（开关在 profile；生产环境会关闭）
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      display-name: '全部接口'
+      paths-to-match: '/**'
+      # 业务包已在扫描范围内，新增域不用改配置
+      packages-to-scan: com.tbgbook.web.controller,com.tbgbook.bookstore
+
+# 防止XSS攻击
+xss:
+  # 过滤开关
+  enabled: true
+  # 排除链接（多个用逗号分隔）
+  excludes: /system/notice
+  # 匹配链接
+  urlPatterns: /system/*,/monitor/*,/tool/*
+
+# ISBN 书目查询（FR-4.1.1 规则 1 / 需求 §7.2 部署要点 1 的「出网白名单例外」）
+# ⚠️ 刻意**不放进 sys_config** —— 那是运营可在后台改的库表，而出网白名单属安全约束，
+#    交给运营编辑等于把「不得整体放开出网」交出去。需求亦写明「白名单域名与超时/重试/
+#    降级策略在部署文档中固化」。生产环境用环境变量覆盖 endpoint 与 allowed-hosts。
+isbn-lookup:
+  # 供应商：需与某个 IsbnProvider 实现的 source() 一致
+  provider: neodb
+  # NeoDB 书库查询端点（免费、无密钥，G6 选定）
+  endpoint: https://neodb.social/api/catalog/search
+  # 出网白名单：endpoint 的 host 必须落在这里才允许发起调用（应用层再兜一道）
+  allowed-hosts:
+    - neodb.social
+  # 超时与重试：需求 §7.2 要求固化。失败按 FR-4.1.1 降级为「信息待补全」，不阻断建档
+  connect-timeout-ms: 2000
+  read-timeout-ms: 4000
+  max-retries: 1

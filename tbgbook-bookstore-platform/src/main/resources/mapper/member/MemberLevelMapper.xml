@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员等级 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberLevelMapper">
+
+    <resultMap type="MemberLevel" id="MemberLevelResult">
+        <result property="levelId"          column="level_id"          />
+        <result property="storeId"          column="store_id"          />
+        <result property="levelCode"        column="level_code"        />
+        <result property="levelName"        column="level_name"        />
+        <result property="levelRank"        column="level_rank"        />
+        <result property="growthThreshold"  column="growth_threshold"  />
+        <result property="discountRate"     column="discount_rate"     />
+        <result property="borrowQtyLimit"   column="borrow_qty_limit"  />
+        <result property="borrowDays"       column="borrow_days"       />
+        <result property="depositAmount"    column="deposit_amount"    />
+        <result property="canRenew"         column="can_renew"         />
+        <result property="isDefault"        column="is_default"        />
+        <result property="status"           column="status"            />
+        <result property="delFlag"          column="del_flag"          />
+        <result property="createBy"         column="create_by"         />
+        <result property="createTime"       column="create_time"       />
+        <result property="updateBy"         column="update_by"         />
+        <result property="updateTime"       column="update_time"       />
+        <result property="remark"           column="remark"            />
+    </resultMap>
+
+    <sql id="selectMemberLevelVo">
+        select l.level_id, l.store_id, l.level_code, l.level_name, l.level_rank,
+               l.growth_threshold, l.discount_rate, l.borrow_qty_limit, l.borrow_days,
+               l.deposit_amount, l.can_renew, l.is_default, l.status, l.del_flag,
+               l.create_by, l.create_time, l.update_by, l.update_time, l.remark
+        from biz_member_level l
+    </sql>
+
+    <select id="selectMemberLevelList" parameterType="MemberLevel" resultMap="MemberLevelResult">
+        <include refid="selectMemberLevelVo"/>
+        <where>
+            l.del_flag = '0'
+            <if test="levelCode != null and levelCode != ''">
+                and l.level_code = #{levelCode}
+            </if>
+            <if test="levelName != null and levelName != ''">
+                and l.level_name like concat('%', #{levelName}, '%')
+            </if>
+            <if test="status != null and status != ''">
+                and l.status = #{status}
+            </if>
+            <!-- 通用日期区间：与 addDateRange() 的 params[beginTime]/params[endTime] 约定一致 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and l.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and l.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by l.level_rank asc, l.level_id asc
+    </select>
+</mapper>

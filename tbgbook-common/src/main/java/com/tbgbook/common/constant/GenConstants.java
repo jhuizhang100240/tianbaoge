@@ -40,7 +40,18 @@ public class GenConstants
     /** 数据库文本类型 */
     public static final String[] COLUMNTYPE_TEXT = { "tinytext", "text", "mediumtext", "longtext" };
 
-    /** 数据库时间类型 */
+    /** 数据库纯日期类型（2026-09-22 新增）—— `date` 列不含时间，映射为 {@link #TYPE_LOCAL_DATE} */
+    public static final String[] COLUMNTYPE_DATE = { "date" };
+
+    /** 数据库日期时间类型（2026-09-22 新增）—— 映射为 {@link #TYPE_LOCAL_DATE_TIME} */
+    public static final String[] COLUMNTYPE_DATETIME = { "datetime", "timestamp", "time" };
+
+    /**
+     * 数据库时间类型（含纯日期）
+     * <p>
+     * ⚠️ 保留仅为兼容既有引用。**新增映射逻辑请用 {@link #COLUMNTYPE_DATE} / {@link #COLUMNTYPE_DATETIME} 细分** ——
+     * 这个数组把 `date` 与 `datetime` 混在一起，正是「纯日期列被迫带上时分秒」的根因。
+     */
     public static final String[] COLUMNTYPE_TIME = { "datetime", "time", "date", "timestamp" };
 
     /** 数据库数字类型 */
@@ -106,8 +117,19 @@ public class GenConstants
     /** 高精度计算类型 */
     public static final String TYPE_BIGDECIMAL = "BigDecimal";
 
-    /** 时间类型 */
+    /**
+     * 时间类型 java.util.Date
+     * <p>
+     * ⚠️ 2026-09-22 起已**不再作为映射默认值**（时间列改映射为 {@link #TYPE_LOCAL_DATE_TIME} / {@link #TYPE_LOCAL_DATE}）。
+     * 保留下拉选项，供第三方 API 只接受 java.util.Date 等边缘场景手工选择。
+     */
     public static final String TYPE_DATE = "Date";
+
+    /** 日期时间类型 java.time.LocalDateTime（2026-09-22 新增，datetime / timestamp / time 列的默认映射） */
+    public static final String TYPE_LOCAL_DATE_TIME = "LocalDateTime";
+
+    /** 纯日期类型 java.time.LocalDate（2026-09-22 新增，date 列的默认映射） */
+    public static final String TYPE_LOCAL_DATE = "LocalDate";
 
     /** 模糊查询 */
     public static final String QUERY_LIKE = "LIKE";

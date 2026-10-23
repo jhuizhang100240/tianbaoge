@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  借阅单 Mapper XML（阶段五步骤④）
+  ⚠️ 时间边界一律由应用侧传入（A32），不在 SQL 里用 now() 与库内 datetime 比较
+  ⚠️ 一律 #{} 参数化，禁止 ${}（NFR-S6）；不写 select *
+-->
+<mapper namespace="com.tbgbook.bookstore.borrow.mapper.BorrowRecordMapper">
+
+    <resultMap type="BorrowRecord" id="BorrowRecordResult">
+        <result property="borrowId"      column="borrow_id"      />
+        <result property="storeId"       column="store_id"       />
+        <result property="borrowNo"      column="borrow_no"      />
+        <result property="memberId"      column="member_id"      />
+        <result property="memberNo"      column="member_no"      />
+        <result property="memberName"    column="member_name"    />
+        <result property="levelId"       column="level_id"       />
+        <result property="bookId"        column="book_id"        />
+        <result property="isbn"          column="isbn"           />
+        <result property="title"         column="title"          />
+        <result property="barCode"       column="bar_code"       />
+        <result property="locationId"    column="location_id"    />
+        <result property="depositAmount" column="deposit_amount" />
+        <result property="borrowTime"    column="borrow_time"    />
+        <result property="dueTime"       column="due_time"       />
+        <result property="returnTime"    column="return_time"    />
+        <result property="renewCount"    column="renew_count"    />
+        <result property="isOverdue"     column="is_overdue"     />
+        <result property="overdueDays"   column="overdue_days"   />
+        <result property="fineAmount"    column="fine_amount"    />
+        <result property="finePaid"      column="fine_paid"      />
+        <result property="isCompensated" column="is_compensated" />
+        <result property="status"        column="status"         />
+        <result property="operatorBy"    column="operator_by"    />
+        <result property="createBy"      column="create_by"      />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"      column="update_by"      />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"        column="remark"         />
+    </resultMap>
+
+    <select id="selectBorrowRecordList" parameterType="BorrowRecord" resultMap="BorrowRecordResult">
+        select b.borrow_id, b.store_id, b.borrow_no, b.member_id, b.member_no, b.member_name,
+               b.level_id, b.book_id, b.isbn, b.title, b.bar_code, b.location_id,
+               b.deposit_amount, b.borrow_time, b.due_time, b.return_time, b.renew_count,
+               b.is_overdue, b.overdue_days, b.fine_amount, b.fine_paid, b.is_compensated,
+               b.status, b.operator_by, b.create_by, b.create_time, b.update_by, b.update_time,
+               b.remark
+        from biz_borrow b
+        <where>
+            <if test="borrowNo != null and borrowNo != ''">
+                and b.borrow_no = #{borrowNo}
+            </if>
+            <if test="memberId != null">
+                and b.member_id = #{memberId}
+            </if>
+            <if test="memberNo != null and memberNo != ''">
+                and b.member_no = #{memberNo}
+            </if>
+            <if test="bookId != null">
+                and b.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and b.isbn = #{isbn}
+            </if>
+            <if test="barCode != null and barCode != ''">
+                and b.bar_code = #{barCode}
+            </if>
+            <if test="isOverdue != null">
+                and b.is_overdue = #{isOverdue}
+            </if>
+            <if test="status != null">
+                and b.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and b.borrow_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and b.borrow_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by b.borrow_id desc
+    </select>
+
+    <select id="selectActiveByCode" resultMap="BorrowRecordResult">
+        select b.borrow_id, b.store_id, b.borrow_no, b.member_id, b.member_no, b.member_name,
+               b.level_id, b.book_id, b.isbn, b.title, b.bar_code, b.location_id,
+               b.deposit_amount, b.borrow_time, b.due_time, b.return_time, b.renew_count,
+               b.is_overdue, b.overdue_days, b.fine_amount, b.fine_paid, b.is_compensated,
+               b.status, b.operator_by, b.create_by, b.create_time, b.update_by, b.update_time,
+               b.remark
+        from biz_borrow b
+        where b.status in (1, 3)
+          and b.return_time is null
+          and (b.bar_code = #{code} or b.isbn = #{code})
+        order by b.borrow_id desc
+        limit 1
+    </select>
+
+    <select id="selectOverdueList" resultType="OverdueItem">
+        select b.borrow_id as borrowId, b.borrow_no as borrowNo, b.member_id as memberId,
+               b.member_name as memberName, m.phone as phone, b.title as title,
+               b.bar_code as barCode, b.due_time as dueTime,
+               datediff(#{now}, b.due_time) as overdueDays,
+               ifnull(bk.price, 0.00) as calcBase
+        from biz_borrow b
+        left join biz_book bk on bk.book_id = b.book_id
+        left join biz_member m on m.member_id = b.member_id
+        where b.status in (1, 3)
+          and b.return_time is null
+          and date(b.due_time) &lt; date(#{now})
+        <if test="memberId != null">
+          and b.member_id = #{memberId}
+        </if>
+        <if test="status != null">
+          and b.status = #{status}
+        </if>
+        <if test="minOverdueDays != null">
+          and datediff(#{now}, b.due_time) &gt;= #{minOverdueDays}
+        </if>
+        order by b.due_time asc
+    </select>
+
+    <select id="selectLendTrend" resultType="java.util.Map">
+        select date_format(b.borrow_time,
+            <choose>
+                <when test="granularity == 'month'">'%Y-%m'</when>
+                <when test="granularity == 'week'">'%x-W%v'</when>
+                <otherwise>'%Y-%m-%d'</otherwise>
+            </choose>) as label,
+            count(*) as lendCount,
+            sum(case when b.return_time is not null then 1 else 0 end) as returnCount
+        from biz_borrow b
+        where b.borrow_time &gt;= #{from} and b.borrow_time &lt;= #{to}
+        group by label
+        order by label
+    </select>
+
+    <select id="selectTopBooks" resultType="java.util.Map">
+        select b.book_id as bookId, b.isbn as isbn, b.title as title, count(*) as lendCount
+        from biz_borrow b
+        where b.borrow_time &gt;= #{from} and b.borrow_time &lt;= #{to}
+        group by b.book_id, b.isbn, b.title
+        order by lendCount desc, b.book_id asc
+        limit #{limit}
+    </select>
+
+    <select id="selectPeriodDistribution" resultType="java.util.Map">
+        select
+            case
+                when datediff(b.return_time, b.borrow_time) &lt;= 7 then '0-7'
+                when datediff(b.return_time, b.borrow_time) &lt;= 14 then '8-14'
+                when datediff(b.return_time, b.borrow_time) &lt;= 21 then '15-21'
+                when datediff(b.return_time, b.borrow_time) &lt;= 30 then '22-30'
+                else '30+'
+            end as label,
+            count(*) as cnt
+        from biz_borrow b
+        where b.return_time is not null
+          and b.return_time &gt;= #{from} and b.return_time &lt;= #{to}
+        group by label
+    </select>
+
+    <select id="selectLevelDistribution" resultType="java.util.Map">
+        select b.level_id as levelId, l.level_name as levelName, count(*) as lendCount
+        from biz_borrow b
+        left join biz_member_level l on l.level_id = b.level_id
+        where b.borrow_time &gt;= #{from} and b.borrow_time &lt;= #{to}
+        group by b.level_id, l.level_name
+        order by lendCount desc
+    </select>
+
+    <select id="selectOverdueRate" resultType="java.util.Map">
+        select
+            count(*) as totalCount,
+            sum(case when b.is_overdue = 1 or (b.return_time is null and b.due_time &lt; #{to})
+                     then 1 else 0 end) as overdueCount
+        from biz_borrow b
+        where b.borrow_time &gt;= #{from} and b.borrow_time &lt;= #{to}
+    </select>
+
+    <select id="countBorrowing" resultType="int">
+        select count(*)
+        from biz_borrow b
+        where b.member_id = #{memberId}
+          and b.status in (1, 3)
+    </select>
+
+    <select id="countActiveReserve" resultType="int">
+        select count(*)
+        from biz_borrow_reserve r
+        where r.book_id = #{bookId}
+          and r.status in (1, 2)
+    </select>
+
+    <select id="selectActiveDueTime" resultType="java.time.LocalDateTime">
+        select min(b.due_time)
+        from biz_borrow b
+        where b.status in (1, 3)
+          and b.return_time is null
+          <if test="memberId != null">
+              and b.member_id = #{memberId}
+          </if>
+          <if test="bookId != null">
+              and b.book_id = #{bookId}
+          </if>
+    </select>
+</mapper>

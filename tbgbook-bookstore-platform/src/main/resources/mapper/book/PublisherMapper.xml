@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  出版社 Mapper XML —— 项目样板
+  ⚠️ XML 只写 MP 覆盖不了的：resultMap + 列表查询（后端 CLAUDE.md §五）
+     不写 insert / update / delete / selectXxxById —— 那些由 BaseMapper 提供
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.PublisherMapper">
+
+    <resultMap type="Publisher" id="PublisherResult">
+        <result property="publisherId"    column="publisher_id"    />
+        <result property="publisherName"  column="publisher_name"  />
+        <result property="contactPerson"  column="contact_person"  />
+        <result property="contactPhone"   column="contact_phone"   />
+        <result property="address"        column="address"         />
+        <result property="status"         column="status"          />
+        <result property="delFlag"        column="del_flag"        />
+        <result property="createBy"       column="create_by"       />
+        <result property="createTime"     column="create_time"     />
+        <result property="updateBy"       column="update_by"       />
+        <result property="updateTime"     column="update_time"     />
+        <result property="remark"         column="remark"          />
+        <!-- 非表字段：冗余统计，供列表页展示与删除前的引用提示 -->
+        <result property="bookCount"      column="book_count"      />
+    </resultMap>
+
+    <sql id="selectPublisherVo">
+        select p.publisher_id, p.publisher_name, p.contact_person, p.contact_phone,
+               p.address, p.status, p.del_flag, p.create_by, p.create_time,
+               p.update_by, p.update_time, p.remark,
+               (select count(*) from biz_book b
+                 where b.publisher_id = p.publisher_id and b.del_flag = '0') as book_count
+        from biz_publisher p
+    </sql>
+
+    <select id="selectPublisherList" parameterType="Publisher" resultMap="PublisherResult">
+        <include refid="selectPublisherVo"/>
+        <where>
+            p.del_flag = '0'
+            <if test="publisherName != null and publisherName != ''">
+                and p.publisher_name like concat('%', #{publisherName}, '%')
+            </if>
+            <if test="contactPerson != null and contactPerson != ''">
+                and p.contact_person = #{contactPerson}
+            </if>
+            <if test="contactPhone != null and contactPhone != ''">
+                and p.contact_phone = #{contactPhone}
+            </if>
+            <if test="address != null and address != ''">
+                and p.address = #{address}
+            </if>
+            <if test="status != null and status != ''">
+                and p.status = #{status}
+            </if>
+            <!-- 通用日期区间：与 addDateRange() 的 params[beginTime]/params[endTime] 约定一致 -->
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and p.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and p.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by p.publisher_id asc
+    </select>
+</mapper>

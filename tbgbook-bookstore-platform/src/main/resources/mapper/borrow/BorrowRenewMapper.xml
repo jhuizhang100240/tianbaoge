@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.borrow.mapper.BorrowRenewMapper">
+
+    <resultMap type="BorrowRenew" id="BorrowRenewResult">
+        <result property="renewId"       column="renew_id"        />
+        <result property="borrowId"      column="borrow_id"       />
+        <result property="beforeDueTime" column="before_due_time" />
+        <result property="afterDueTime"  column="after_due_time"  />
+        <result property="renewDays"     column="renew_days"      />
+        <result property="renewBy"       column="renew_by"        />
+        <result property="renewChannel"  column="renew_channel"   />
+        <result property="createTime"    column="create_time"     />
+    </resultMap>
+
+    <select id="selectBorrowRenewList" parameterType="BorrowRenew" resultMap="BorrowRenewResult">
+        select v.renew_id, v.borrow_id, v.before_due_time, v.after_due_time,
+               v.renew_days, v.renew_by, v.renew_channel, v.create_time
+        from biz_borrow_renew v
+        <where>
+            <if test="borrowId != null">
+                and v.borrow_id = #{borrowId}
+            </if>
+            <if test="renewChannel != null">
+                and v.renew_channel = #{renewChannel}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and v.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and v.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by v.renew_id desc
+    </select>
+</mapper>

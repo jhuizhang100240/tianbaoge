@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.app.mapper.AppCatalogMapper">
+
+    <sql id="bookFilters">
+        b.store_id = 1 and b.del_flag = '0' and b.publish_status = 1 and b.status &lt;&gt; 4
+        <if test="keyword != null and keyword != ''">
+            and (b.title like concat('%', #{keyword}, '%')
+              or b.author like concat('%', #{keyword}, '%')
+              or b.isbn like concat('%', #{keyword}, '%')
+              or b.publisher_name like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+        <if test="bookType != null">and b.book_type = #{bookType}</if>
+        <if test="minPrice != null">and b.price &gt;= #{minPrice}</if>
+        <if test="maxPrice != null">and b.price &lt;= #{maxPrice}</if>
+        <if test="onlyAvailable">and exists (select 1 from biz_stock s
+            where s.book_id = b.book_id and s.qty_available &gt; 0)</if>
+    </sql>
+
+    <select id="searchBooks" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn, b.title, b.author, b.publisher_name as publisherName,
+               b.cover_url as coverUrl, b.price, b.member_price as memberPrice, b.book_type as bookType,
+               b.sale_count as saleCount, b.status,
+               coalesce((select sum(s.qty_available) from biz_stock s where s.book_id = b.book_id), 0)
+                   as qtyAvailable,
+               (select l.location_code from biz_stock s2
+                join biz_location l on l.location_id = s2.location_id
+                where s2.book_id = b.book_id and s2.qty_available &gt; 0
+                order by s2.qty_available desc limit 1) as locationCode,
+               (select c.category_name from biz_category c where c.category_id = b.category_id)
+                   as categoryName
+        from biz_book b
+        where <include refid="bookFilters"/>
+        <choose>
+            <when test="sortBy == 'price_asc'">order by b.price asc, b.book_id desc</when>
+            <when test="sortBy == 'price_desc'">order by b.price desc, b.book_id desc</when>
+            <when test="sortBy == 'new'">order by b.create_time desc, b.book_id desc</when>
+            <otherwise>order by b.sale_count desc, b.book_id desc</otherwise>
+        </choose>
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countBooks" resultType="long">
+        select count(*) from biz_book b where <include refid="bookFilters"/>
+    </select>
+
+    <sql id="usedFilters">
+        ub.store_id = 1 and ub.stock_status = 1
+        <if test="keyword != null and keyword != ''">
+            and (ub.title like concat('%', #{keyword}, '%')
+              or ub.isbn like concat('%', #{keyword}, '%')
+              or ub.author like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="categoryId != null">and exists (select 1 from biz_book b
+            where b.book_id = ub.book_id and b.category_id = #{categoryId})</if>
+        <if test="minPrice != null">and ub.used_price &gt;= #{minPrice}</if>
+        <if test="maxPrice != null">and ub.used_price &lt;= #{maxPrice}</if>
+    </sql>
+
+    <select id="searchUsedBooks" resultType="java.util.LinkedHashMap">
+        select ub.used_book_id as usedBookId, ub.book_id as bookId, ub.isbn, ub.title, ub.author,
+               ub.publisher_name as publisherName, ub.cover_url as coverUrl,
+               ub.condition_grade_name as conditionGradeName,
+               ub.origin_price as originPrice, ub.used_price as usedPrice,
+               ub.stock_status as stockStatus, ub.shelf_time as shelfTime,
+               ub.bar_code as barCode
+        from biz_used_book ub
+        where <include refid="usedFilters"/>
+        <choose>
+            <when test="sortBy == 'price_asc'">order by ub.used_price asc</when>
+            <when test="sortBy == 'price_desc'">order by ub.used_price desc</when>
+            <otherwise>order by ub.shelf_time desc, ub.used_book_id desc</otherwise>
+        </choose>
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countSearchUsedBooks" resultType="long">
+        select count(*) from biz_used_book ub where <include refid="usedFilters"/>
+    </select>
+
+    <select id="bookById" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.book_no as bookNo, b.isbn, b.title, b.subtitle, b.author,
+               b.translator, b.publisher_name as publisherName, b.publish_date as publishDate,
+               b.edition, b.binding, b.page_count as pageCount, b.category_id as categoryId,
+               b.book_type as bookType, b.price, b.member_price as memberPrice, b.cover_url as coverUrl,
+               b.summary, b.summary_source as summarySource, b.status, b.publish_status as publishStatus,
+               b.sale_count as saleCount,
+               (select c.category_name from biz_category c where c.category_id = b.category_id)
+                   as categoryName
+        from biz_book b
+        where b.book_id = #{bookId} and b.del_flag = '0'
+          and b.publish_status = 1 and b.status &lt;&gt; 4
+    </select>
+
+    <select id="bookByIsbn" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId from biz_book b
+        where b.isbn = #{isbn} and b.del_flag = '0'
+          and b.publish_status = 1 and b.status &lt;&gt; 4
+        limit 1
+    </select>
+
+    <select id="bookStockSummary" resultType="java.util.LinkedHashMap">
+        select coalesce(sum(qty_available), 0) as qtyAvailable,
+               coalesce(sum(qty_locked), 0) as qtyLocked,
+               coalesce(sum(qty_borrowed), 0) as qtyBorrowed,
+               coalesce(sum(qty_damaged), 0) as qtyDamaged
+        from biz_stock where store_id = 1 and book_id = #{bookId}
+    </select>
+
+    <select id="stockByLocation" resultType="java.util.LinkedHashMap">
+        select l.location_id as locationId, l.location_code as locationCode,
+               l.location_name as locationName, l.zone as zone,
+               concat(l.zone, ' ', l.shelf_no, '排', l.layer_no, '层') as shelfHint,
+               s.qty_available as qtyAvailable, s.qty_locked as qtyLocked,
+               s.qty_borrowed as qtyBorrowed, s.qty_damaged as qtyDamaged
+        from biz_stock s
+        join biz_location l on l.location_id = s.location_id
+        where s.store_id = 1 and s.book_id = #{bookId}
+        order by s.qty_available desc, l.location_code
+    </select>
+
+    <select id="publishedSummaries" resultType="java.util.LinkedHashMap">
+        select summary_id as summaryId, gen_type as genType, content, source_type as sourceType,
+               publish_time as publishTime
+        from biz_ai_summary
+        where book_id = #{bookId} and status = 4
+        order by gen_type, summary_id desc
+    </select>
+
+    <select id="usedBooksByBook" resultType="java.util.LinkedHashMap">
+        select ub.used_book_id as usedBookId, ub.bar_code as barCode, ub.condition_grade_id as conditionGradeId,
+               ub.condition_grade_name as conditionGradeName,
+               (select g.grade_desc from biz_condition_grade g
+                where g.grade_id = ub.condition_grade_id) as conditionDesc,
+               ub.origin_price as originPrice, ub.used_price as usedPrice,
+               ub.stock_status as stockStatus
+        from biz_used_book ub
+        where ub.book_id = #{bookId} and ub.stock_status = 1
+        order by ub.used_price asc
+    </select>
+
+    <select id="relatedBooks" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn, b.title, b.author, b.cover_url as coverUrl,
+               b.price, b.sale_count as saleCount
+        from biz_book b
+        where b.store_id = 1 and b.del_flag = '0' and b.publish_status = 1
+          and b.status &lt;&gt; 4 and b.category_id = #{categoryId}
+          and b.book_id &lt;&gt; #{excludeBookId}
+        order by b.sale_count desc
+        limit #{limit}
+    </select>
+
+    <select id="categories" resultType="java.util.LinkedHashMap">
+        select category_id as categoryId, parent_id as parentId, category_name as categoryName,
+               category_level as categoryLevel, book_count as bookCount, order_num as orderNum
+        from biz_category
+        where store_id = 1 and del_flag = '0' and status = '0'
+        order by category_level, order_num, category_id
+    </select>
+
+    <select id="hotBooks" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn, b.title, b.author, b.cover_url as coverUrl,
+               b.price, b.sale_count as saleCount,
+               (select min(ub.used_price) from biz_used_book ub
+                where ub.book_id = b.book_id and ub.stock_status = 1) as usedPrice
+        from biz_book b
+        where b.store_id = 1 and b.del_flag = '0' and b.publish_status = 1 and b.status &lt;&gt; 4
+        order by b.sale_count desc, b.book_id desc
+        limit #{limit}
+    </select>
+
+    <select id="activePromotions" resultType="java.util.LinkedHashMap">
+        select promotion_id as promotionId, promotion_name as promotionName,
+               promotion_type as promotionType, discount_rate as discountRate,
+               threshold_amount as thresholdAmount, reduce_amount as reduceAmount,
+               gift_desc as giftDesc, start_time as startTime, end_time as endTime
+        from biz_promotion
+        where store_id = 1 and del_flag = '0' and status = 2
+        order by priority desc, promotion_id desc
+        limit 10
+    </select>
+
+    <select id="personalizedBooks" resultType="java.util.LinkedHashMap">
+        select distinct b.book_id as bookId, b.isbn, b.title, b.author, b.cover_url as coverUrl,
+               b.price, b.sale_count as saleCount,
+               (select min(ub.used_price) from biz_used_book ub
+                where ub.book_id = b.book_id and ub.stock_status = 1) as usedPrice
+        from biz_book b
+        join biz_order_item oi on oi.book_id = b.book_id
+        join biz_order o on o.order_id = oi.order_id
+        where o.member_id = #{memberId} and o.status in (2, 3, 4)
+          and b.store_id = 1 and b.del_flag = '0' and b.publish_status = 1 and b.status &lt;&gt; 4
+        order by b.sale_count desc, b.book_id desc
+        limit #{limit}
+    </select>
+
+    <select id="usedBookById" resultType="java.util.LinkedHashMap">
+        select ub.used_book_id as usedBookId, ub.book_id as bookId, ub.bar_code as barCode,
+               ub.sku_code as skuCode, ub.isbn, ub.title, ub.author, ub.publisher_name as publisherName,
+               ub.cover_url as coverUrl, ub.condition_grade_id as conditionGradeId,
+               ub.condition_grade_name as conditionGradeName,
+               (select g.grade_desc from biz_condition_grade g
+                where g.grade_id = ub.condition_grade_id) as conditionDesc,
+               ub.origin_price as originPrice, ub.used_price as usedPrice,
+               ub.stock_status as stockStatus, ub.location_id as locationId
+        from biz_used_book ub
+        where ub.used_book_id = #{usedBookId}
+    </select>
+
+    <select id="usedBookByBarCode" resultType="java.util.LinkedHashMap">
+        select ub.used_book_id as usedBookId, ub.book_id as bookId
+        from biz_used_book ub where ub.bar_code = #{barCode} limit 1
+    </select>
+
+    <select id="usedBookList" resultType="java.util.LinkedHashMap">
+        select ub.used_book_id as usedBookId, ub.isbn, ub.title, ub.author, ub.cover_url as coverUrl,
+               ub.condition_grade_name as conditionGradeName,
+               (select g.grade_desc from biz_condition_grade g
+                where g.grade_id = ub.condition_grade_id) as conditionDesc,
+               ub.origin_price as originPrice, ub.used_price as usedPrice,
+               ub.stock_status as stockStatus, ub.bar_code as barCode
+        from biz_used_book ub
+        where ub.store_id = 1 and ub.stock_status = 1
+        <if test="keyword != null and keyword != ''">
+            and (ub.title like concat('%', #{keyword}, '%')
+              or ub.isbn like concat('%', #{keyword}, '%')
+              or ub.author like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="categoryId != null">and exists (select 1 from biz_book b
+            where b.book_id = ub.book_id and b.category_id = #{categoryId})</if>
+        <if test="conditionGradeId != null">and ub.condition_grade_id = #{conditionGradeId}</if>
+        <if test="minPrice != null">and ub.used_price &gt;= #{minPrice}</if>
+        <if test="maxPrice != null">and ub.used_price &lt;= #{maxPrice}</if>
+        <choose>
+            <when test="sortBy == 'price_asc'">order by ub.used_price asc</when>
+            <when test="sortBy == 'price_desc'">order by ub.used_price desc</when>
+            <otherwise>order by ub.shelf_time desc, ub.used_book_id desc</otherwise>
+        </choose>
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countUsedBookList" resultType="long">
+        select count(*) from biz_used_book ub where ub.store_id = 1 and ub.stock_status = 1
+        <if test="keyword != null and keyword != ''">
+            and (ub.title like concat('%', #{keyword}, '%') or ub.isbn like concat('%', #{keyword}, '%')
+              or ub.author like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="categoryId != null">and exists (select 1 from biz_book b
+            where b.book_id = ub.book_id and b.category_id = #{categoryId})</if>
+        <if test="conditionGradeId != null">and ub.condition_grade_id = #{conditionGradeId}</if>
+        <if test="minPrice != null">and ub.used_price &gt;= #{minPrice}</if>
+        <if test="maxPrice != null">and ub.used_price &lt;= #{maxPrice}</if>
+    </select>
+</mapper>

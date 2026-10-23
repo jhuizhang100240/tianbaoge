@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员标签关系 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 重算批量维护 + 规则取数
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}，禁止 ${}（NFR-S6）
+     —— 规则比较运算符不进 SQL：按指标取数后由 Java 侧 TagRule 判定
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberTagRelMapper">
+
+    <resultMap type="MemberTagRel" id="MemberTagRelResult">
+        <result property="relId"      column="rel_id"      />
+        <result property="memberId"   column="member_id"   />
+        <result property="tagId"      column="tag_id"      />
+        <result property="source"     column="source"      />
+        <result property="createBy"   column="create_by"   />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <sql id="selectMemberTagRelVo">
+        select r.rel_id, r.member_id, r.tag_id, r.source, r.create_by, r.create_time
+        from biz_member_tag_rel r
+    </sql>
+
+    <select id="selectMemberTagRelList" parameterType="MemberTagRel" resultMap="MemberTagRelResult">
+        <include refid="selectMemberTagRelVo"/>
+        <where>
+            <if test="memberId != null">
+                and r.member_id = #{memberId}
+            </if>
+            <if test="tagId != null">
+                and r.tag_id = #{tagId}
+            </if>
+            <if test="source != null">
+                and r.source = #{source}
+            </if>
+        </where>
+        order by r.rel_id desc
+    </select>
+
+    <select id="selectRelMemberIdsByTag" resultType="java.lang.Long">
+        select r.member_id from biz_member_tag_rel r where r.tag_id = #{tagId}
+    </select>
+
+    <delete id="deleteByTagAndMembers">
+        delete from biz_member_tag_rel
+        where tag_id = #{tagId}
+          and member_id in
+        <foreach collection="memberIds" item="mid" open="(" separator="," close=")">
+            #{mid}
+        </foreach>
+    </delete>
+
+    <insert id="insertRelBatch">
+        insert into biz_member_tag_rel (member_id, tag_id, source, create_by, create_time)
+        values
+        <foreach collection="memberIds" item="mid" separator=",">
+            (#{mid}, #{tagId}, #{source}, #{createBy}, #{now})
+        </foreach>
+    </insert>
+
+    <!--
+      规则标签取数：按指标白名单选一条固定表达式；比较运算在 Java 侧完成。
+      时间边界（windowStart / now）一律由应用侧传入（A32）。
+    -->
+    <select id="selectMemberMetricValues" resultType="java.util.Map">
+        select m.member_id as memberId,
+        <choose>
+            <when test="metric == 'consume30d'">
+                (select count(*) from biz_order o
+                 where o.member_id = m.member_id and o.status = 4 and o.is_red = 0
+                   and o.finish_time is not null and o.finish_time &gt;= #{windowStart})
+            </when>
+            <when test="metric == 'consume30d_amount'">
+                (select coalesce(sum(o.pay_amount), 0) from biz_order o
+                 where o.member_id = m.member_id and o.status = 4
+                   and o.finish_time is not null and o.finish_time &gt;= #{windowStart})
+            </when>
+            <when test="metric == 'consume_total'">
+                m.consume_count
+            </when>
+            <when test="metric == 'consume_total_amount'">
+                m.consume_amount
+            </when>
+            <when test="metric == 'points'">
+                m.points
+            </when>
+            <when test="metric == 'growth'">
+                m.growth_value
+            </when>
+            <otherwise>
+                timestampdiff(day, m.register_time, #{now})
+            </otherwise>
+        </choose>
+        as metricValue
+        from biz_member m
+        where m.status &lt;&gt; 4
+    </select>
+</mapper>

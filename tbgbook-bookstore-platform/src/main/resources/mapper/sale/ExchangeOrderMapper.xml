@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 换货单 Mapper XML（无 del_flag，状态三态 1待处理 2已完成 3已作废） -->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.ExchangeOrderMapper">
+
+    <resultMap type="ExchangeOrder" id="ExchangeOrderResult">
+        <result property="exchangeId"    column="exchange_id"     />
+        <result property="storeId"       column="store_id"        />
+        <result property="exchangeNo"    column="exchange_no"     />
+        <result property="originOrderId" column="origin_order_id" />
+        <result property="originOrderNo" column="origin_order_no" />
+        <result property="memberId"      column="member_id"       />
+        <result property="outAmount"     column="out_amount"      />
+        <result property="inAmount"      column="in_amount"       />
+        <result property="diffAmount"    column="diff_amount"     />
+        <result property="status"        column="status"          />
+        <result property="exchangeBy"    column="exchange_by"     />
+        <result property="exchangeTime"  column="exchange_time"   />
+        <result property="createTime"    column="create_time"     />
+        <result property="updateTime"    column="update_time"     />
+    </resultMap>
+
+    <select id="selectExchangeOrderList" parameterType="ExchangeOrder" resultMap="ExchangeOrderResult">
+        select e.exchange_id, e.store_id, e.exchange_no, e.origin_order_id, e.origin_order_no,
+               e.member_id, e.out_amount, e.in_amount, e.diff_amount, e.status,
+               e.exchange_by, e.exchange_time, e.create_time, e.update_time
+        from biz_exchange_order e
+        <where>
+            <if test="exchangeNo != null and exchangeNo != ''">
+                and e.exchange_no = #{exchangeNo}
+            </if>
+            <if test="originOrderNo != null and originOrderNo != ''">
+                and e.origin_order_no = #{originOrderNo}
+            </if>
+            <if test="memberId != null">
+                and e.member_id = #{memberId}
+            </if>
+            <if test="status != null">
+                and e.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and e.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and e.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by e.exchange_id desc
+    </select>
+
+    <select id="selectNextExchangeId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1) from information_schema.tables
+        where table_schema = (select database()) and table_name = 'biz_exchange_order'
+    </select>
+</mapper>

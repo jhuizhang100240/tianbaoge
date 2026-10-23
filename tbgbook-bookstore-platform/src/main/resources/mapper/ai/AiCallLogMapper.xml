@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.ai.mapper.AiCallLogMapper">
+
+    <select id="selectCostSummary" resultType="java.util.Map">
+        select date_format(create_time, #{format}) as bucket,
+               scene                                as scene,
+               model_name                           as modelName,
+               count(*)                             as callCount,
+               coalesce(sum(total_tokens), 0)       as totalTokens,
+               coalesce(sum(cost), 0)               as totalCost,
+               coalesce(round(avg(latency_ms)), 0)  as avgLatencyMs
+        from biz_ai_call_log
+        where create_time &gt;= #{start}
+          and create_time &lt; #{end}
+        <if test="scene != null">
+          and scene = #{scene}
+        </if>
+        group by bucket, scene, model_name
+        order by bucket asc
+    </select>
+
+    <select id="selectCacheHitStats" resultType="java.util.Map">
+        select count(*) as totalCalls,
+               coalesce(sum(case when cache_hit = 1 then 1 else 0 end), 0) as cacheHits
+        from biz_ai_call_log
+        where create_time &gt;= #{start}
+          and create_time &lt; #{end}
+        <if test="scene != null">
+          and scene = #{scene}
+        </if>
+    </select>
+
+</mapper>

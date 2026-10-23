@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  图书价格版本历史 Mapper XML（只读）
+  ⚠️ 本表只增不改不删（FR-4.1 规则 5）：XML 里**没有** insert/update/delete ——
+     写入由 BookServiceImpl 经 BaseMapper.insert 完成。
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2）；一律 #{}（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.BookPriceHistoryMapper">
+
+    <resultMap type="BookPriceHistory" id="BookPriceHistoryResult">
+        <result property="historyId"     column="history_id"     />
+        <result property="storeId"       column="store_id"       />
+        <result property="bookId"        column="book_id"        />
+        <result property="priceType"     column="price_type"     />
+        <result property="beforePrice"   column="before_price"   />
+        <result property="afterPrice"    column="after_price"    />
+        <result property="changeReason"  column="change_reason"  />
+        <result property="createBy"      column="create_by"      />
+        <result property="createTime"    column="create_time"    />
+    </resultMap>
+
+    <select id="selectBookPriceHistoryList" parameterType="BookPriceHistory" resultMap="BookPriceHistoryResult">
+        select h.history_id, h.store_id, h.book_id, h.price_type, h.before_price,
+               h.after_price, h.change_reason, h.create_by, h.create_time
+        from biz_book_price_history h
+        <where>
+            <if test="bookId != null">
+                and h.book_id = #{bookId}
+            </if>
+            <if test="priceType != null">
+                and h.price_type = #{priceType}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and h.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and h.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by h.history_id desc
+        <!--
+          可选上限：图书全景详情（GET /book/book/{bookId}/detail）只要最近 N 条，
+          走 params.limit（实体上的瞬态 map）。列表端点不传该键 → 不产生 limit 子句。
+          ⚠️ 与 PageHelper 不冲突：本键只在未调 startPage() 的调用路径上出现。
+        -->
+        <if test="params.limit != null">
+            limit #{params.limit}
+        </if>
+    </select>
+</mapper>

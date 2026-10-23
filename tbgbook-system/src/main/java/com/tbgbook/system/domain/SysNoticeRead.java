@@ -1,6 +1,6 @@
 package com.tbgbook.system.domain;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
@@ -21,7 +21,7 @@ public class SysNoticeRead
     private Long userId;
 
     /** 阅读时间 */
-    private Date readTime;
+    private LocalDateTime readTime;
 
     public Long getReadId()
     {
@@ -53,12 +53,12 @@ public class SysNoticeRead
         this.userId = userId;
     }
 
-    public Date getReadTime()
+    public LocalDateTime getReadTime()
     {
         return readTime;
     }
 
-    public void setReadTime(Date readTime)
+    public void setReadTime(LocalDateTime readTime)
     {
         this.readTime = readTime;
     }

@@ -110,7 +110,7 @@ public class SysProfileController extends BaseController
         if (userService.resetUserPwd(userId, newPassword) > 0)
         {
             // 更新缓存用户密码&密码最后更新时间
-            loginUser.getUser().setPwdUpdateDate(DateUtils.getNowDate());
+            loginUser.getUser().setPwdUpdateDate(DateUtils.getNowLocalDateTime());
             loginUser.getUser().setPassword(newPassword);
             tokenService.setLoginUser(loginUser);
             return success();

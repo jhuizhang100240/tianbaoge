@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 换货单明细 Mapper XML（无 del_flag） -->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.ExchangeOrderItemMapper">
+
+    <resultMap type="ExchangeOrderItem" id="ExchangeOrderItemResult">
+        <result property="itemId"     column="item_id"     />
+        <result property="exchangeId" column="exchange_id" />
+        <result property="direction"  column="direction"   />
+        <result property="bookId"     column="book_id"     />
+        <result property="isbn"       column="isbn"        />
+        <result property="title"      column="title"       />
+        <result property="qty"        column="qty"         />
+        <result property="unitPrice"  column="unit_price"  />
+        <result property="amount"     column="amount"      />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <select id="selectExchangeOrderItemList" parameterType="ExchangeOrderItem" resultMap="ExchangeOrderItemResult">
+        select i.item_id, i.exchange_id, i.direction, i.book_id, i.isbn, i.title, i.qty,
+               i.unit_price, i.amount, i.create_time
+        from biz_exchange_order_item i
+        <where>
+            <if test="exchangeId != null">
+                and i.exchange_id = #{exchangeId}
+            </if>
+            <if test="direction != null">
+                and i.direction = #{direction}
+            </if>
+            <if test="bookId != null">
+                and i.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and i.isbn = #{isbn}
+            </if>
+        </where>
+        order by i.item_id asc
+    </select>
+
+    <delete id="deleteByExchangeIds">
+        delete from biz_exchange_order_item where exchange_id in
+        <foreach collection="exchangeIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <!--
+      已换回的数量（防重复换货）。
+      换货明细没有 order_item_id 列（表结构如此），只能按「原单 + 图书」聚合；
+      只算已完成(status=2)的换货单。
+    -->
+    <select id="sumExchangedInQty" resultType="int">
+        select ifnull(sum(i.qty), 0)
+        from biz_exchange_order_item i
+        join biz_exchange_order e on e.exchange_id = i.exchange_id
+        where e.origin_order_id = #{originOrderId} and i.book_id = #{bookId}
+          and i.direction = 2 and e.status = 2
+    </select>
+</mapper>

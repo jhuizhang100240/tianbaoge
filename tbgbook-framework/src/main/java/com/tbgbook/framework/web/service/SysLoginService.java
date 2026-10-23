@@ -171,6 +171,6 @@ public class SysLoginService
      */
     public void recordLoginInfo(Long userId)
     {
-        userService.updateLoginInfo(userId, IpUtils.getIpAddr(), DateUtils.getNowDate());
+        userService.updateLoginInfo(userId, IpUtils.getIpAddr(), DateUtils.getNowLocalDateTime());
     }
 }

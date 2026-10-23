@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  支付流水 Mapper XML
+  ⚠️ biz_payment 只有 create_time / update_time，没有 del_flag / create_by / update_by / remark。
+  ⚠️ 只读资源（kind=log）：写入由收银结算内部完成。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.PaymentMapper">
+
+    <resultMap type="Payment" id="PaymentResult">
+        <result property="paymentId"    column="payment_id"    />
+        <result property="storeId"      column="store_id"      />
+        <result property="orderId"      column="order_id"      />
+        <result property="orderNo"      column="order_no"      />
+        <result property="payNo"        column="pay_no"        />
+        <result property="payMethod"    column="pay_method"    />
+        <result property="payAmount"    column="pay_amount"    />
+        <result property="payStatus"    column="pay_status"    />
+        <result property="tradeNo"      column="trade_no"      />
+        <result property="payTime"      column="pay_time"      />
+        <result property="refundAmount" column="refund_amount" />
+        <result property="refundTime"   column="refund_time"   />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+    </resultMap>
+
+    <select id="selectPaymentList" parameterType="Payment" resultMap="PaymentResult">
+        select p.payment_id, p.store_id, p.order_id, p.order_no, p.pay_no, p.pay_method,
+               p.pay_amount, p.pay_status, p.trade_no, p.pay_time, p.refund_amount,
+               p.refund_time, p.create_time, p.update_time
+        from biz_payment p
+        <where>
+            <if test="orderId != null">
+                and p.order_id = #{orderId}
+            </if>
+            <if test="orderNo != null and orderNo != ''">
+                and p.order_no = #{orderNo}
+            </if>
+            <if test="payMethod != null">
+                and p.pay_method = #{payMethod}
+            </if>
+            <if test="payStatus != null">
+                and p.pay_status = #{payStatus}
+            </if>
+            <if test="tradeNo != null and tradeNo != ''">
+                and p.trade_no = #{tradeNo}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and p.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and p.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by p.payment_id desc
+    </select>
+</mapper>

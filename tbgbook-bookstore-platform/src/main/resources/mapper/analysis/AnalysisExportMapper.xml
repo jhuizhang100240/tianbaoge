@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.analysis.mapper.AnalysisExportMapper">
+
+    <select id="exportOrders" resultType="java.util.LinkedHashMap">
+        select o.order_no as orderNo,
+               date_format(o.create_time, '%Y-%m-%d %H:%i:%s') as createTime,
+               o.member_name as memberName,
+               case o.order_type when 1 then '门店收银' when 2 then '线上下单' else '教材预订' end as orderType,
+               o.total_amount as totalAmount,
+               o.discount_total as discountTotal,
+               o.pay_amount as payAmount,
+               case o.status when 1 then '待支付' when 2 then '已支付' when 3 then '待取货'
+                   when 4 then '已完成' when 5 then '已取消' when 6 then '退款中' else '已退款' end as status,
+               o.cashier_by as cashierBy,
+               coalesce((select sum(oi.share_amount - oi.cost_price * oi.qty)
+                         from biz_order_item oi where oi.order_id = o.order_id), 0) as grossProfit
+        from biz_order o
+        where o.store_id = 1
+          and o.create_time &gt;= #{start}
+          and o.create_time &lt; date_add(#{end}, interval 1 day)
+        order by o.order_id
+    </select>
+
+    <select id="exportInventory" resultType="java.util.LinkedHashMap">
+        select b.book_no as bookNo, b.isbn, b.title,
+               coalesce(c.category_name, '未分类') as categoryName,
+               coalesce(sum(s.qty_available), 0) as qtyAvailable,
+               coalesce(sum(s.qty_locked), 0) as qtyLocked,
+               coalesce(sum(s.qty_borrowed), 0) as qtyBorrowed,
+               coalesce(sum(s.qty_damaged), 0) as qtyDamaged,
+               coalesce(sum((s.qty_available + s.qty_locked + s.qty_damaged) * b.cost_price), 0)
+                   as totalAmount
+        from biz_stock s
+        join biz_book b on b.book_id = s.book_id
+        left join biz_category c on c.category_id = b.category_id
+        where s.store_id = 1
+        <if test="categoryId != null">and b.category_id = #{categoryId}</if>
+        group by b.book_no, b.isbn, b.title, c.category_name
+        order by b.book_no
+    </select>
+
+    <select id="exportMembers" resultType="java.util.LinkedHashMap">
+        select m.member_no as memberNo, m.nickname, m.phone,
+               coalesce(ms.student_no, '') as studentNo,
+               m.level_name as levelName, m.points,
+               m.balance_principal as balancePrincipal, m.balance_gift as balanceGift,
+               m.deposit_balance as depositBalance,
+               case m.status when 1 then '正常' when 2 then '冻结' when 3 then '黑名单' else '已注销' end as status,
+               date_format(m.create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from biz_member m
+        left join biz_member_student ms on ms.member_id = m.member_id
+        where m.store_id = 1
+        order by m.member_id
+    </select>
+
+    <select id="exportMemberData" resultType="java.util.LinkedHashMap">
+        select 'profile' as recordType, m.member_no as bizNo, m.nickname as title,
+               0 as qty, null as amount, null as pointChange, m.status as status,
+               m.register_time as eventTime
+        from biz_member m
+        where m.member_id = #{memberId}
+        union all
+        select 'order' as recordType, o.order_no as bizNo,
+               concat('订单-', o.status) as title, o.total_qty as qty,
+               o.pay_amount as amount, null as pointChange, o.status as status,
+               coalesce(o.finish_time, o.pay_time, o.create_time) as eventTime
+        from biz_order o
+        where o.member_id = #{memberId}
+        union all
+        select 'borrow' as recordType, b.borrow_no as bizNo, b.title,
+               1 as qty, null as amount, null as pointChange, b.status as status,
+               coalesce(b.return_time, b.borrow_time) as eventTime
+        from biz_borrow b
+        where b.member_id = #{memberId}
+        union all
+        select 'point' as recordType, p.ref_no as bizNo, p.remark as title,
+               0 as qty, null as amount, p.points_change as pointChange,
+               null as status, p.create_time as eventTime
+        from biz_point_log p
+        where p.member_id = #{memberId}
+        order by eventTime desc
+    </select>
+
+    <select id="exportBorrows" resultType="java.util.LinkedHashMap">
+        select borrow_no as borrowNo, member_no as memberNo, member_name as memberName,
+               isbn, title,
+               date_format(borrow_time, '%Y-%m-%d %H:%i:%s') as borrowTime,
+               date_format(due_time, '%Y-%m-%d %H:%i:%s') as dueTime,
+               date_format(return_time, '%Y-%m-%d %H:%i:%s') as returnTime,
+               case status when 1 then '在借' when 2 then '已归还' when 3 then '已逾期' else '已赔偿' end as status,
+               fine_amount as fineAmount, operator_by as operatorBy
+        from biz_borrow
+        where store_id = 1
+          and borrow_time &gt;= #{start}
+          and borrow_time &lt; date_add(#{end}, interval 1 day)
+        order by borrow_id
+    </select>
+
+    <select id="exportStockcheckDiff" resultType="java.util.LinkedHashMap">
+        select c.check_no as checkNo,
+               case c.check_type when 1 then '全盘' else '抽盘' end as checkType,
+               i.isbn, i.title, i.book_qty as bookQty, i.actual_qty as actualQty,
+               i.diff_qty as diffQty, i.diff_amount as diffAmount,
+               case i.diff_type when 1 then '盘盈' when 2 then '盘亏' when 3 then '盘点期差异' else '无差异' end as diffType,
+               i.reason,
+               date_format(i.check_time, '%Y-%m-%d %H:%i:%s') as checkTime
+        from biz_stock_check_item i
+        join biz_stock_check c on c.check_id = i.check_id
+        where c.store_id = 1 and i.diff_qty &lt;&gt; 0
+          and i.check_time &gt;= #{start}
+          and i.check_time &lt; date_add(#{end}, interval 1 day)
+        order by i.item_id
+    </select>
+
+    <select id="customReportRows" resultType="java.util.LinkedHashMap">
+        <choose>
+            <when test="dimension == 'date'">
+                select date_format(o.create_time, '%Y-%m-%d') as dimensionKey,
+                       date_format(o.create_time, '%Y-%m-%d') as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((select coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0)
+                                     from biz_order_item oi where oi.order_id = o.order_id)), 0) as grossProfit,
+                       coalesce(sum(o.discount_total), 0) as discountTotal,
+                       coalesce(sum(case when o.status = 7 then o.pay_amount else 0 end), 0) as refundAmount
+                from biz_order o
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by date_format(o.create_time, '%Y-%m-%d')
+                order by dimensionKey
+                limit #{limit}
+            </when>
+            <when test="dimension == 'category'">
+                select cast(coalesce(c.category_id, 0) as char) as dimensionKey,
+                       coalesce(c.category_name, '未分类') as dimensionName,
+                       coalesce(sum(oi.share_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0) as grossProfit,
+                       0 as discountTotal, 0 as refundAmount
+                from biz_order o
+                join biz_order_item oi on oi.order_id = o.order_id
+                left join biz_book b on b.book_id = oi.book_id
+                left join biz_category c on c.category_id = b.category_id
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by c.category_id, c.category_name
+                order by saleAmount desc
+                limit #{limit}
+            </when>
+            <when test="dimension == 'member_level'">
+                select cast(o.member_level_id as char) as dimensionKey,
+                       coalesce(ml.level_name, '散客/未知') as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((select coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0)
+                                     from biz_order_item oi where oi.order_id = o.order_id)), 0) as grossProfit,
+                       coalesce(sum(o.discount_total), 0) as discountTotal,
+                       0 as refundAmount
+                from biz_order o
+                left join biz_member_level ml on ml.level_id = o.member_level_id
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.member_level_id, ml.level_name
+                order by saleAmount desc
+                limit #{limit}
+            </when>
+            <when test="dimension == 'channel'">
+                select cast(o.order_type as char) as dimensionKey,
+                       case o.order_type when 1 then '门店收银' when 2 then '线上下单' else '教材预订' end
+                           as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((select coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0)
+                                     from biz_order_item oi where oi.order_id = o.order_id)), 0) as grossProfit,
+                       coalesce(sum(o.discount_total), 0) as discountTotal,
+                       0 as refundAmount
+                from biz_order o
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.order_type
+                order by saleAmount desc
+                limit #{limit}
+            </when>
+            <when test="dimension == 'cashier'">
+                select o.cashier_by as dimensionKey,
+                       case when o.cashier_by = '' then '未记录' else o.cashier_by end as dimensionName,
+                       coalesce(sum(o.pay_amount), 0) as saleAmount,
+                       count(distinct o.order_id) as orderCount,
+                       coalesce(sum((select coalesce(sum(oi.share_amount - oi.cost_price * oi.qty), 0)
+                                     from biz_order_item oi where oi.order_id = o.order_id)), 0) as grossProfit,
+                       coalesce(sum(o.discount_total), 0) as discountTotal,
+                       0 as refundAmount
+                from biz_order o
+                where o.store_id = 1 and o.status in (2, 3, 4)
+                  and o.create_time &gt;= #{start}
+                  and o.create_time &lt; date_add(#{end}, interval 1 day)
+                group by o.cashier_by
+                order by saleAmount desc
+                limit #{limit}
+            </when>
+            <otherwise>
+                select '' as dimensionKey, '' as dimensionName, 0 as saleAmount, 0 as orderCount,
+                       0 as grossProfit, 0 as discountTotal, 0 as refundAmount
+                from dual where 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+</mapper>

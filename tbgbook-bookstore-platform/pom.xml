@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>tbgbook</artifactId>
+        <groupId>com.tbgbook</groupId>
+        <version>3.9.2</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>tbgbook-bookstore-platform</artifactId>
+
+    <description>
+        业务域：图书 / 库存 / 销售 / 会员 / 借阅 / 二手书 / AI / 消息 / 分析
+    </description>
+
+    <dependencies>
+
+        <!-- 框架核心：Web / AOP / Security / Druid -->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-framework</artifactId>
+        </dependency>
+
+        <!-- 阿里云 OSS 文件上传 -->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-oss</artifactId>
+        </dependency>
+
+        <!-- AI 模型客户端：百炼（通义千问）chat + embedding（阶段七，方案 A） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+        </dependency>
+
+        <!-- Redisson 核心包：限流 / 分布式锁 / 索引上下文 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+        </dependency>
+
+        <!-- PDF 文本抽取（知识库解析 pdf） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+
+        <!-- 会员码 / 取货码二维码（ZXing） -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+        </dependency>
+
+        <!-- 会员端 JWT（与后台 TokenService 隔离） -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt</artifactId>
+        </dependency>
+
+        <!--Lombok-->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+    </dependencies>
+
+</project>

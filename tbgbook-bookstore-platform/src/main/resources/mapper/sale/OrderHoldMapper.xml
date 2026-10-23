@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  收银挂单 Mapper XML
+  ⚠️ 列表查询**故意不 select cart_data**（json 列）：挂单列表按单号/金额/时间/会员筛，
+     不需要购物车内容；带上它会让每行都拖一坨 JSON。详情走 MP 的 autoResultMap（带 typeHandler）才有。
+  ⚠️ biz_order_hold 没有 del_flag —— 作废是 status=3。
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.OrderHoldMapper">
+
+    <resultMap type="OrderHold" id="OrderHoldResult">
+        <result property="holdId"      column="hold_id"      />
+        <result property="storeId"     column="store_id"     />
+        <result property="holdNo"      column="hold_no"      />
+        <result property="memberId"    column="member_id"    />
+        <result property="memberName"  column="member_name"  />
+        <result property="totalQty"    column="total_qty"    />
+        <result property="totalAmount" column="total_amount" />
+        <result property="status"      column="status"       />
+        <result property="holdBy"      column="hold_by"      />
+        <result property="holdTime"    column="hold_time"    />
+        <result property="resumeTime"  column="resume_time"  />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateTime"  column="update_time"  />
+    </resultMap>
+
+    <select id="selectOrderHoldList" parameterType="OrderHold" resultMap="OrderHoldResult">
+        select h.hold_id, h.store_id, h.hold_no, h.member_id, h.member_name,
+               h.total_qty, h.total_amount, h.status, h.hold_by, h.hold_time,
+               h.resume_time, h.create_time, h.update_time
+        from biz_order_hold h
+        <where>
+            <if test="holdNo != null and holdNo != ''">
+                and h.hold_no = #{holdNo}
+            </if>
+            <if test="memberId != null">
+                and h.member_id = #{memberId}
+            </if>
+            <if test="status != null">
+                and h.status = #{status}
+            </if>
+            <if test="holdBy != null and holdBy != ''">
+                and h.hold_by = #{holdBy}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and h.hold_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and h.hold_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by h.hold_id desc
+    </select>
+
+    <select id="selectNextHoldId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1)
+        from information_schema.tables
+        where table_schema = (select database())
+          and table_name = 'biz_order_hold'
+    </select>
+</mapper>

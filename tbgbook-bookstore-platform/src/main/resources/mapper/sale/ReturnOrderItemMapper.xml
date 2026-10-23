@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 退货单明细 Mapper XML（无 del_flag；不写 SELECT *；一律 #{}） -->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.ReturnOrderItemMapper">
+
+    <resultMap type="ReturnOrderItem" id="ReturnOrderItemResult">
+        <result property="itemId"        column="item_id"        />
+        <result property="returnId"      column="return_id"      />
+        <result property="orderItemId"   column="order_item_id"  />
+        <result property="bookId"        column="book_id"        />
+        <result property="usedBookId"    column="used_book_id"   />
+        <result property="isbn"          column="isbn"           />
+        <result property="title"         column="title"          />
+        <result property="buyQty"        column="buy_qty"        />
+        <result property="returnQty"     column="return_qty"     />
+        <result property="unitPrice"     column="unit_price"     />
+        <result property="refundAmount"  column="refund_amount"  />
+        <result property="bookCondition" column="book_condition" />
+        <result property="stockTo"       column="stock_to"       />
+        <result property="createTime"    column="create_time"    />
+    </resultMap>
+
+    <select id="selectReturnOrderItemList" parameterType="ReturnOrderItem" resultMap="ReturnOrderItemResult">
+        select i.item_id, i.return_id, i.order_item_id, i.book_id, i.used_book_id, i.isbn, i.title,
+               i.buy_qty, i.return_qty, i.unit_price, i.refund_amount, i.book_condition, i.stock_to,
+               i.create_time
+        from biz_return_order_item i
+        <where>
+            <if test="returnId != null">
+                and i.return_id = #{returnId}
+            </if>
+            <if test="bookId != null">
+                and i.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and i.isbn = #{isbn}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and i.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and i.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by i.item_id asc
+    </select>
+
+    <delete id="deleteByReturnIds">
+        delete from biz_return_order_item where return_id in
+        <foreach collection="returnIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <!--
+      已成功退掉的数量（防超退）。
+      只算**已完成**(status=2)的退货单明细：待审核/已驳回的不该占用可退额度，
+      否则一张被驳回的申请会把顾客的退货权利永久占掉。
+    -->
+    <select id="sumReturnedQty" resultType="int">
+        select ifnull(sum(i.return_qty), 0)
+        from biz_return_order_item i
+        join biz_return_order r on r.return_id = i.return_id
+        where i.order_item_id = #{orderItemId} and r.status = 2
+    </select>
+</mapper>

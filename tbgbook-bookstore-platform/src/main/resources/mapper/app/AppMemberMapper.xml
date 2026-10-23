@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tbgbook.bookstore.app.mapper.AppMemberMapper">
+
+    <sql id="pointLogWhere">
+        where member_id = #{memberId}
+        <if test="changeType != null">
+            and change_type = #{changeType}
+        </if>
+        <if test="beginTime != null">
+            and create_time &gt;= #{beginTime}
+        </if>
+        <if test="endTime != null">
+            and create_time &lt; #{endTime}
+        </if>
+    </sql>
+
+    <select id="selectPointLogs" resultType="java.util.LinkedHashMap">
+        select log_id as logId, cast(change_type as signed) as changeType,
+               points_change as pointsChange,
+               points_after as pointsAfter, ref_no as refNo, remark, create_time as createTime
+        from biz_point_log
+        <include refid="pointLogWhere"/>
+        order by create_time desc, log_id desc
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countPointLogs" resultType="long">
+        select count(*)
+        from biz_point_log
+        <include refid="pointLogWhere"/>
+    </select>
+
+    <sql id="balanceLogWhere">
+        where member_id = #{memberId}
+        <if test="amountType != null">
+            and amount_type = #{amountType}
+        </if>
+        <if test="beginTime != null">
+            and create_time &gt;= #{beginTime}
+        </if>
+        <if test="endTime != null">
+            and create_time &lt; #{endTime}
+        </if>
+    </sql>
+
+    <select id="selectBalanceLogs" resultType="java.util.LinkedHashMap">
+        select log_id as logId, cast(amount_type as signed) as amountType,
+               change_amount as changeAmount,
+               principal_after as principalAfter, gift_after as giftAfter, ref_no as refNo,
+               remark, create_time as createTime
+        from biz_stored_value_log
+        <include refid="balanceLogWhere"/>
+        order by create_time desc, log_id desc
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countBalanceLogs" resultType="long">
+        select count(*)
+        from biz_stored_value_log
+        <include refid="balanceLogWhere"/>
+    </select>
+
+    <sql id="timelineUnion">
+        <trim prefixOverrides="union all">
+            <if test="includeOrder">
+                select 'order' as type, order_no as bizNo,
+                       concat('订单 ', ifnull(member_name, '')) as title,
+                       pay_amount as amount, null as pointChange,
+                       coalesce(finish_time, pay_time, create_time) as eventTime,
+                       concat('pages/order/detail?orderId=', order_id) as linkUrl
+                from biz_order
+                where member_id = #{memberId}
+                <if test="beginTime != null">
+                    and coalesce(finish_time, pay_time, create_time) &gt;= #{beginTime}
+                </if>
+                <if test="endTime != null">
+                    and coalesce(finish_time, pay_time, create_time) &lt; #{endTime}
+                </if>
+            </if>
+            <if test="includeBorrow">
+                union all
+                select 'borrow' as type, borrow_no as bizNo, title,
+                       null as amount, null as pointChange, borrow_time as eventTime,
+                       concat('pages/borrow/detail?borrowId=', borrow_id) as linkUrl
+                from biz_borrow
+                where member_id = #{memberId}
+                <if test="beginTime != null">
+                    and borrow_time &gt;= #{beginTime}
+                </if>
+                <if test="endTime != null">
+                    and borrow_time &lt; #{endTime}
+                </if>
+            </if>
+            <if test="includePoint">
+                union all
+                select 'point' as type, ref_no as bizNo,
+                       concat('积分', if(points_change &gt;= 0, '获得', '变动')) as title,
+                       null as amount, points_change as pointChange, create_time as eventTime,
+                       'pages/member/point/logs' as linkUrl
+                from biz_point_log
+                where member_id = #{memberId}
+                <if test="beginTime != null">
+                    and create_time &gt;= #{beginTime}
+                </if>
+                <if test="endTime != null">
+                    and create_time &lt; #{endTime}
+                </if>
+            </if>
+            <if test="includeRecycle">
+                union all
+                select 'recycle' as type, recycle_no as bizNo, '二手书回收' as title,
+                       coalesce(nullif(final_amount, 0), estimated_amount) as amount,
+                       null as pointChange, coalesce(settle_time, submit_time, create_time) as eventTime,
+                       concat('pages/recycle/detail?recycleId=', recycle_id) as linkUrl
+                from biz_recycle
+                where member_id = #{memberId}
+                <if test="beginTime != null">
+                    and coalesce(settle_time, submit_time, create_time) &gt;= #{beginTime}
+                </if>
+                <if test="endTime != null">
+                    and coalesce(settle_time, submit_time, create_time) &lt; #{endTime}
+                </if>
+            </if>
+        </trim>
+    </sql>
+
+    <select id="selectTimeline" resultType="java.util.LinkedHashMap">
+        select type, bizNo, title, amount, pointChange, eventTime, linkUrl
+        from (<include refid="timelineUnion"/>) t
+        order by eventTime desc
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countTimeline" resultType="long">
+        select count(*)
+        from (<include refid="timelineUnion"/>) t
+    </select>
+
+    <select id="selectTimelineSummary" resultType="java.util.LinkedHashMap">
+        select
+            ifnull((select sum(pay_amount) from biz_order where member_id = #{memberId}
+                    and status not in (5, 7)), 0) as totalConsume,
+            (select count(*) from biz_borrow where member_id = #{memberId}) as totalBorrow,
+            ifnull((select sum(points_change) from biz_point_log where member_id = #{memberId}
+                    and points_change &gt; 0), 0) as totalPointsGained
+    </select>
+
+    <sql id="messageWhere">
+        where member_id = #{memberId}
+        <if test="msgType != null">
+            and msg_type = #{msgType}
+        </if>
+        <if test="readStatus != null">
+            and is_read = #{readStatus}
+        </if>
+    </sql>
+
+    <select id="selectMessages" resultType="java.util.LinkedHashMap">
+        select message_id as messageId, cast(msg_type as signed) as msgType, title, content,
+               link_url as linkUrl, biz_no as bizNo, cast(is_read as signed) as isRead,
+               read_time as readTime, create_time as createTime
+        from biz_message
+        <include refid="messageWhere"/>
+        order by create_time desc, message_id desc
+        limit #{offset}, #{limit}
+    </select>
+
+    <select id="countMessages" resultType="long">
+        select count(*)
+        from biz_message
+        <include refid="messageWhere"/>
+    </select>
+
+    <select id="countUnreadMessages" resultType="int">
+        select count(*) from biz_message where member_id = #{memberId} and is_read = 0
+    </select>
+
+    <update id="markMessagesRead">
+        update biz_message
+        set is_read = 1, read_time = now()
+        where member_id = #{memberId} and is_read = 0
+        <if test="messageIds != null and messageIds.size() &gt; 0">
+            and message_id in
+            <foreach collection="messageIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+    </update>
+
+    <select id="selectCancelBlockers" resultType="java.util.LinkedHashMap">
+        select
+            (select count(*) from biz_borrow where member_id = #{memberId}
+             and status in (1, 3)) as activeBorrows,
+            (select count(*) from biz_order where member_id = #{memberId}
+             and status not in (5, 7) and (is_settled is null or is_settled = 0)) as pendingOrders,
+            (select count(*) from biz_recycle where member_id = #{memberId}
+             and status in (1, 2)) as pendingRecycles
+    </select>
+
+    <update id="incrementCouponIssued">
+        update biz_coupon_template
+        set issued_qty = issued_qty + 1,
+            update_time = now()
+        where template_id = #{templateId}
+          and del_flag = '0'
+          and status = 2
+          and (total_qty = 0 or issued_qty &lt; total_qty)
+    </update>
+</mapper>

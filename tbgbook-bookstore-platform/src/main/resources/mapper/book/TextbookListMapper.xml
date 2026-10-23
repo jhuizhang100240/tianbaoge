@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  教材清单 Mapper XML
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询 + 带条件的状态流转（后端 CLAUDE.md §五）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.book.mapper.TextbookListMapper">
+
+    <resultMap type="TextbookList" id="TextbookListResult">
+        <result property="listId"        column="list_id"         />
+        <result property="storeId"       column="store_id"        />
+        <result property="listNo"        column="list_no"         />
+        <result property="listName"      column="list_name"       />
+        <result property="term"          column="term"            />
+        <result property="major"         column="major"           />
+        <result property="college"       column="college"         />
+        <result property="bookKindCount" column="book_kind_count" />
+        <result property="reserveQty"    column="reserve_qty"     />
+        <result property="arrivedQty"    column="arrived_qty"     />
+        <result property="pickedQty"     column="picked_qty"      />
+        <result property="status"        column="status"          />
+        <result property="publishTime"   column="publish_time"    />
+        <result property="endTime"       column="end_time"        />
+        <result property="createBy"      column="create_by"       />
+        <result property="createTime"    column="create_time"     />
+        <result property="updateBy"      column="update_by"       />
+        <result property="updateTime"    column="update_time"     />
+        <result property="remark"        column="remark"          />
+    </resultMap>
+
+    <sql id="selectTextbookListVo">
+        select list_id, store_id, list_no, list_name, term, major, college,
+               book_kind_count, reserve_qty, arrived_qty, picked_qty, status,
+               publish_time, end_time,
+               create_by, create_time, update_by, update_time, remark
+        from biz_textbook_list
+    </sql>
+
+    <select id="selectTextbookList" parameterType="TextbookList" resultMap="TextbookListResult">
+        <include refid="selectTextbookListVo"/>
+        <where>
+            <if test="listNo != null and listNo != ''">
+                and list_no = #{listNo}
+            </if>
+            <if test="listName != null and listName != ''">
+                and list_name like concat('%', #{listName}, '%')
+            </if>
+            <if test="term != null and term != ''">
+                and term = #{term}
+            </if>
+            <if test="major != null and major != ''">
+                and major = #{major}
+            </if>
+            <if test="status != null and status != ''">
+                and status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by list_id desc
+    </select>
+
+    <!--
+      状态流转：条件 UPDATE。where 带 expectedStatus —— 并发重复「发布」时第二次拿 0 行，
+      调用方据此报冲突（本表无 version 列，见 mapper 接口注释）。
+      update_by / update_time 由调用方传入：XML 的 update 不走 MyMetaObjectHandler。
+    -->
+    <update id="transition">
+        update biz_textbook_list
+        <set>
+            status = #{patch.status},
+            <if test="patch.publishTime != null">publish_time = #{patch.publishTime},</if>
+            <if test="patch.endTime != null">end_time = #{patch.endTime},</if>
+            update_by = #{patch.updateBy},
+            update_time = #{patch.updateTime}
+        </set>
+        where list_id = #{patch.listId} and status = #{expectedStatus}
+    </update>
+</mapper>

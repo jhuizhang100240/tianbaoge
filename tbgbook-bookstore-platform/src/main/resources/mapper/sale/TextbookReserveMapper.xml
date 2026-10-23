@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  教材预订 Mapper XML
+  ⚠️ biz_textbook_reserve 没有 del_flag（状态五态：1待到货 2待到店取书 3部分取书 4已取完 5已取消）
+  ⚠️ locked_qty 是「累计已取书数量」而不是「已锁定数量」（列名有歧义，见领域对象注释）
+  ⚠️ 不写 SELECT *；一律 #{}
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.TextbookReserveMapper">
+
+    <resultMap type="TextbookReserve" id="TextbookReserveResult">
+        <result property="reserveId"   column="reserve_id"   />
+        <result property="storeId"     column="store_id"     />
+        <result property="reserveNo"   column="reserve_no"   />
+        <result property="memberId"    column="member_id"    />
+        <result property="listId"      column="list_id"      />
+        <result property="listItemId"  column="list_item_id" />
+        <result property="bookId"      column="book_id"      />
+        <result property="isbn"        column="isbn"         />
+        <result property="title"       column="title"        />
+        <result property="qty"         column="qty"          />
+        <result property="lockedQty"   column="locked_qty"   />
+        <result property="unitPrice"   column="unit_price"   />
+        <result property="totalAmount" column="total_amount" />
+        <result property="orderId"     column="order_id"     />
+        <result property="status"      column="status"       />
+        <result property="reserveTime" column="reserve_time" />
+        <result property="lockTime"    column="lock_time"    />
+        <result property="arriveTime"  column="arrive_time"  />
+        <result property="notifyTime"  column="notify_time"  />
+        <result property="pickupCode"  column="pickup_code"  />
+        <result property="pickupTime"  column="pickup_time"  />
+        <result property="cancelTime"  column="cancel_time"  />
+        <result property="createTime"  column="create_time"  />
+        <result property="updateTime"  column="update_time"  />
+    </resultMap>
+
+    <select id="selectTextbookReserveList" parameterType="TextbookReserve" resultMap="TextbookReserveResult">
+        select r.reserve_id, r.store_id, r.reserve_no, r.member_id, r.list_id, r.list_item_id,
+               r.book_id, r.isbn, r.title, r.qty, r.locked_qty, r.unit_price, r.total_amount,
+               r.order_id, r.status, r.reserve_time, r.lock_time, r.arrive_time, r.notify_time,
+               r.pickup_code, r.pickup_time, r.cancel_time, r.create_time, r.update_time
+        from biz_textbook_reserve r
+        <where>
+            <if test="reserveNo != null and reserveNo != ''">
+                and r.reserve_no = #{reserveNo}
+            </if>
+            <if test="memberId != null">
+                and r.member_id = #{memberId}
+            </if>
+            <if test="listId != null">
+                and r.list_id = #{listId}
+            </if>
+            <if test="bookId != null">
+                and r.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and r.isbn = #{isbn}
+            </if>
+            <if test="status != null">
+                and r.status = #{status}
+            </if>
+            <if test="pickupCode != null and pickupCode != ''">
+                and r.pickup_code = #{pickupCode}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and r.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and r.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by r.reserve_id desc
+    </select>
+
+    <select id="selectNextReserveId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1) from information_schema.tables
+        where table_schema = (select database()) and table_name = 'biz_textbook_reserve'
+    </select>
+
+    <!-- 未取消的预订量合计（excludeReserveId 用于修改时排除自身） -->
+    <select id="sumActiveQtyByListItem" resultType="int">
+        select ifnull(sum(r.qty), 0) from biz_textbook_reserve r
+        where r.list_item_id = #{listItemId}
+          and r.status &lt;&gt; 5
+        <if test="excludeReserveId != null">
+            and r.reserve_id &lt;&gt; #{excludeReserveId}
+        </if>
+    </select>
+</mapper>

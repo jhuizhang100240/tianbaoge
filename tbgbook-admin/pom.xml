@@ -54,6 +54,12 @@
             <artifactId>tbgbook-generator</artifactId>
         </dependency>
 
+        <!-- 业务域模块-->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-bookstore-platform</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

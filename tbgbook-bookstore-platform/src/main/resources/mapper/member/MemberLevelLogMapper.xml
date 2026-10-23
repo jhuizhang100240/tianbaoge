@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  会员等级变更记录 Mapper XML（只读）
+  ⚠️ 只写 MP 覆盖不了的：resultMap + 列表查询；不写 insert / update / delete
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.member.mapper.MemberLevelLogMapper">
+
+    <resultMap type="MemberLevelLog" id="MemberLevelLogResult">
+        <result property="logId"         column="log_id"          />
+        <result property="memberId"      column="member_id"       />
+        <result property="beforeLevelId" column="before_level_id" />
+        <result property="afterLevelId"  column="after_level_id"  />
+        <result property="changeType"    column="change_type"     />
+        <result property="growthValue"   column="growth_value"    />
+        <result property="changeReason"  column="change_reason"   />
+        <result property="createBy"      column="create_by"       />
+        <result property="createTime"    column="create_time"     />
+    </resultMap>
+
+    <sql id="selectMemberLevelLogVo">
+        select l.log_id, l.member_id, l.before_level_id, l.after_level_id, l.change_type,
+               l.growth_value, l.change_reason, l.create_by, l.create_time
+        from biz_member_level_log l
+    </sql>
+
+    <select id="selectMemberLevelLogList" parameterType="MemberLevelLog" resultMap="MemberLevelLogResult">
+        <include refid="selectMemberLevelLogVo"/>
+        <where>
+            <if test="memberId != null">
+                and l.member_id = #{memberId}
+            </if>
+            <if test="changeType != null">
+                and l.change_type = #{changeType}
+            </if>
+            <if test="beforeLevelId != null">
+                and l.before_level_id = #{beforeLevelId}
+            </if>
+            <if test="afterLevelId != null">
+                and l.after_level_id = #{afterLevelId}
+            </if>
+        </where>
+        order by l.log_id desc
+    </select>
+</mapper>

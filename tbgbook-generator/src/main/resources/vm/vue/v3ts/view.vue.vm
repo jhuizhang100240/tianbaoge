@@ -27,7 +27,7 @@
               <dict-tag :options="${dictType}" :value="info.${javaField}" />
 #end
 #elseif($column.htmlType == "datetime")
-              {{ parseTime(info.${javaField}, '{y}-{m}-{d}') }}
+              {{ parseTime(info.${javaField}, '#if($column.javaType == 'LocalDateTime'){y}-{m}-{d} {h}:{i}:{s}#{else}{y}-{m}-{d}#end') }}
 #elseif($column.htmlType == "imageUpload")
               <image-preview :src="info.${javaField}" :width="60" :height="60" />
 #else

@@ -305,12 +305,27 @@ public class VelocityUtils
         }
         for (GenTableColumn column : columns)
         {
-            if (!column.isSuperColumn() && GenConstants.TYPE_DATE.equals(column.getJavaType()))
+            if (column.isSuperColumn())
+            {
+                continue;
+            }
+            String javaType = column.getJavaType();
+            if (GenConstants.TYPE_LOCAL_DATE_TIME.equals(javaType))
+            {
+                importList.add("java.time.LocalDateTime");
+                importList.add("com.fasterxml.jackson.annotation.JsonFormat");
+            }
+            else if (GenConstants.TYPE_LOCAL_DATE.equals(javaType))
+            {
+                importList.add("java.time.LocalDate");
+                importList.add("com.fasterxml.jackson.annotation.JsonFormat");
+            }
+            else if (GenConstants.TYPE_DATE.equals(javaType))
             {
                 importList.add("java.util.Date");
                 importList.add("com.fasterxml.jackson.annotation.JsonFormat");
             }
-            else if (!column.isSuperColumn() && GenConstants.TYPE_BIGDECIMAL.equals(column.getJavaType()))
+            else if (GenConstants.TYPE_BIGDECIMAL.equals(javaType))
             {
                 importList.add("java.math.BigDecimal");
             }

@@ -3,8 +3,24 @@ package ${packageName}.domain;
 #foreach ($import in $importList)
 import ${import};
 #end
-import org.apache.commons.lang3.builder.ToStringBuilder;
-import org.apache.commons.lang3.builder.ToStringStyle;
+#set($hasTableLogic = false)
+#set($hasVersion = false)
+#foreach ($column in $columns)
+#if($column.javaField == 'delFlag')#set($hasTableLogic = true)#end
+#if($column.javaField == 'version')#set($hasVersion = true)#end
+#end
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+#if($hasTableLogic)
+import com.baomidou.mybatisplus.annotation.TableLogic;
+#end
+import com.baomidou.mybatisplus.annotation.TableName;
+#if($hasVersion)
+import com.baomidou.mybatisplus.annotation.Version;
+#end
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import com.tbgbook.common.annotation.Excel;
 #if($table.crud || $table.sub)
 import com.tbgbook.common.core.domain.BaseEntity;
@@ -23,6 +39,9 @@ import com.tbgbook.common.core.domain.TreeEntity;
 #elseif($table.tree)
 #set($Entity="TreeEntity")
 #end
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("${tableName}")
 public class ${ClassName} extends ${Entity}
 {
     private static final long serialVersionUID = 1L;
@@ -39,6 +58,12 @@ public class ${ClassName} extends ${Entity}
 #end
 #if($parentheseIndex != -1)
     @Excel(name = "${comment}", readConverterExp = "$column.readConverterExp()")
+#elseif($column.javaType == 'LocalDateTime')
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd HH:mm:ss")
+#elseif($column.javaType == 'LocalDate')
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd")
 #elseif($column.javaType == 'Date')
     @JsonFormat(pattern = "yyyy-MM-dd")
     @Excel(name = "${comment}", width = 30, dateFormat = "yyyy-MM-dd")
@@ -46,60 +71,23 @@ public class ${ClassName} extends ${Entity}
     @Excel(name = "${comment}")
 #end
 #end
+#if($column.columnName == $pkColumn.columnName)
+    @TableId(value = "${column.columnName}", type = #if($pkColumn.increment)IdType.AUTO#else IdType.INPUT#end)
+#elseif($column.javaField == 'delFlag')
+    @TableLogic(value = "0", delval = "2")
+#elseif($column.javaField == 'version')
+    @Version
+#else
+    @TableField("${column.columnName}")
+#end
     private $column.javaType $column.javaField;
 
 #end
 #end
 #if($table.sub)
     /** $table.subTable.functionName信息 */
+    @TableField(exist = false)
     private List<${subClassName}> ${subclassName}List;
 
 #end
-#foreach ($column in $columns)
-#if(!$table.isSuperColumn($column.javaField))
-#if($column.javaField.length() > 2 && $column.javaField.substring(1,2).matches("[A-Z]"))
-#set($AttrName=$column.javaField)
-#else
-#set($AttrName=$column.javaField.substring(0,1).toUpperCase() + ${column.javaField.substring(1)})
-#end
-    public void set${AttrName}($column.javaType $column.javaField) 
-    {
-        this.$column.javaField = $column.javaField;
-    }
-
-    public $column.javaType get${AttrName}() 
-    {
-        return $column.javaField;
-    }
-
-#end
-#end
-#if($table.sub)
-    public List<${subClassName}> get${subClassName}List()
-    {
-        return ${subclassName}List;
-    }
-
-    public void set${subClassName}List(List<${subClassName}> ${subclassName}List)
-    {
-        this.${subclassName}List = ${subclassName}List;
-    }
-
-#end
-    @Override
-    public String toString() {
-        return new ToStringBuilder(this,ToStringStyle.MULTI_LINE_STYLE)
-#foreach ($column in $columns)
-#if($column.javaField.length() > 2 && $column.javaField.substring(1,2).matches("[A-Z]"))
-#set($AttrName=$column.javaField)
-#else
-#set($AttrName=$column.javaField.substring(0,1).toUpperCase() + ${column.javaField.substring(1)})
-#end
-            .append("${column.javaField}", get${AttrName}())
-#end
-#if($table.sub)
-            .append("${subclassName}List", get${subClassName}List())
-#end
-            .toString();
-    }
 }

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  退货单 Mapper XML
+  ⚠️ biz_return_order 没有 del_flag（单据用 status 三态：1待审核 2已完成 3已驳回）
+  ⚠️ 不写 SELECT *；一律 #{}
+-->
+<mapper namespace="com.tbgbook.bookstore.sale.mapper.ReturnOrderMapper">
+
+    <resultMap type="ReturnOrder" id="ReturnOrderResult">
+        <result property="returnId"       column="return_id"       />
+        <result property="storeId"        column="store_id"        />
+        <result property="returnNo"       column="return_no"       />
+        <result property="originOrderId"  column="origin_order_id" />
+        <result property="originOrderNo"  column="origin_order_no" />
+        <result property="memberId"       column="member_id"       />
+        <result property="returnType"     column="return_type"     />
+        <result property="isNoOrder"      column="is_no_order"     />
+        <result property="totalQty"       column="total_qty"       />
+        <result property="refundAmount"   column="refund_amount"   />
+        <result property="refundPoint"    column="refund_point"    />
+        <result property="refundCoupon"   column="refund_coupon"   />
+        <result property="reason"         column="reason"          />
+        <result property="bookCondition"  column="book_condition"  />
+        <result property="status"         column="status"          />
+        <result property="auditBy"        column="audit_by"        />
+        <result property="auditTime"      column="audit_time"      />
+        <result property="auditRemark"    column="audit_remark"    />
+        <result property="returnBy"       column="return_by"       />
+        <result property="returnTime"     column="return_time"     />
+        <result property="createTime"     column="create_time"     />
+        <result property="updateTime"     column="update_time"     />
+    </resultMap>
+
+    <select id="selectReturnOrderList" parameterType="ReturnOrder" resultMap="ReturnOrderResult">
+        select r.return_id, r.store_id, r.return_no, r.origin_order_id, r.origin_order_no,
+               r.member_id, r.return_type, r.is_no_order, r.total_qty, r.refund_amount,
+               r.refund_point, r.refund_coupon, r.reason, r.book_condition, r.status,
+               r.audit_by, r.audit_time, r.audit_remark, r.return_by, r.return_time,
+               r.create_time, r.update_time
+        from biz_return_order r
+        <where>
+            <if test="returnNo != null and returnNo != ''">
+                and r.return_no = #{returnNo}
+            </if>
+            <if test="originOrderNo != null and originOrderNo != ''">
+                and r.origin_order_no = #{originOrderNo}
+            </if>
+            <if test="memberId != null">
+                and r.member_id = #{memberId}
+            </if>
+            <if test="returnType != null">
+                and r.return_type = #{returnType}
+            </if>
+            <if test="isNoOrder != null">
+                and r.is_no_order = #{isNoOrder}
+            </if>
+            <if test="status != null">
+                and r.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and r.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and r.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        order by r.return_id desc
+    </select>
+
+    <select id="selectNextReturnId" resultType="java.lang.Long">
+        select ifnull(auto_increment, 1) from information_schema.tables
+        where table_schema = (select database()) and table_name = 'biz_return_order'
+    </select>
+</mapper>

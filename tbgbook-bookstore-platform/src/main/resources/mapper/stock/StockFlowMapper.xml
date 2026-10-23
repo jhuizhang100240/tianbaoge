@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存流水 Mapper XML
+  ⚠️ 本表**只增不删**，所以这里只有 select（无 insert/update/delete）
+  ⚠️ 不写 SELECT *（根 CLAUDE.md §6.2），字段显式列出
+  ⚠️ 一律 #{}，禁止 ${} 拼接（NFR-S6）
+-->
+<mapper namespace="com.tbgbook.bookstore.stock.mapper.StockFlowMapper">
+
+    <resultMap type="StockFlow" id="StockFlowResult">
+        <result property="flowId"     column="flow_id"     />
+        <result property="storeId"    column="store_id"    />
+        <result property="bookId"     column="book_id"     />
+        <result property="locationId" column="location_id" />
+        <result property="stockType"  column="stock_type"  />
+        <result property="bizType"    column="biz_type"    />
+        <result property="bizNo"      column="biz_no"      />
+        <result property="qtyChange"  column="qty_change"  />
+        <result property="qtyBefore"  column="qty_before"  />
+        <result property="qtyAfter"   column="qty_after"   />
+        <result property="createBy"   column="create_by"   />
+        <result property="createTime" column="create_time" />
+        <result property="remark"     column="remark"      />
+        <!-- 非表字段：ISBN 用于筛选、书名用于展示，省得前端按行回查 -->
+        <result property="isbn"       column="book_isbn"   />
+        <result property="title"      column="book_title"  />
+    </resultMap>
+
+    <sql id="selectStockFlowVo">
+        select f.flow_id, f.store_id, f.book_id, f.location_id, f.stock_type, f.biz_type,
+               f.biz_no, f.qty_change, f.qty_before, f.qty_after,
+               f.create_by, f.create_time, f.remark,
+               b.isbn as book_isbn, b.title as book_title
+        from biz_stock_flow f
+        left join biz_book b on b.book_id = f.book_id
+    </sql>
+
+    <select id="selectStockFlowList" parameterType="StockFlow" resultMap="StockFlowResult">
+        <include refid="selectStockFlowVo"/>
+        <where>
+            <if test="bookId != null">
+                and f.book_id = #{bookId}
+            </if>
+            <if test="isbn != null and isbn != ''">
+                and b.isbn = #{isbn}
+            </if>
+            <if test="locationId != null">
+                and f.location_id = #{locationId}
+            </if>
+            <if test="stockType != null">
+                and f.stock_type = #{stockType}
+            </if>
+            <if test="bizType != null">
+                and f.biz_type = #{bizType}
+            </if>
+            <if test="bizNo != null and bizNo != ''">
+                and f.biz_no = #{bizNo}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                and f.create_time &gt;= #{params.beginTime}
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                and f.create_time &lt;= #{params.endTime}
+            </if>
+        </where>
+        <!-- 追溯用：新的在前 -->
+        order by f.flow_id desc
+    </select>
+
+    <!-- 库存行删除保护：该「图书+库位」上是否已有流水（流水只增不删，删库存行会让历史失去主语） -->
+    <select id="countByBookAndLocation" resultType="java.lang.Long">
+        select count(*) from biz_stock_flow
+        where book_id = #{bookId} and location_id = #{locationId}
+    </select>
+</mapper>

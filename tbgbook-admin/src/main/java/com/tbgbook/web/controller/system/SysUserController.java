@@ -234,7 +234,7 @@ public class SysUserController extends BaseController
      * 用户授权角色
      */
     @PreAuthorize("@ss.hasPermi('system:user:edit')")
-    @Log(title = "用户管理", businessType = BusinessType.GRANT)
+    @Log(title = "用户管理", businessType = BusinessType.GRANT, isSensitive = true, bizType = "permission")
     @PutMapping("/authRole")
     public AjaxResult insertAuthRole(Long userId, Long[] roleIds)
     {

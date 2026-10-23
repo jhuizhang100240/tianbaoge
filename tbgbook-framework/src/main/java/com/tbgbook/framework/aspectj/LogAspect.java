@@ -154,6 +154,9 @@ public class LogAspect
         operLog.setTitle(log.title());
         // 设置操作人类别
         operLog.setOperatorType(log.operatorType().ordinal());
+        // 敏感操作标记与业务类型（NFR-S8）
+        operLog.setIsSensitive(log.isSensitive() ? 1 : 0);
+        operLog.setBizType(log.bizType() == null ? "" : log.bizType());
         // 是否需要保存request，参数和值
         if (log.isSaveRequestData())
         {

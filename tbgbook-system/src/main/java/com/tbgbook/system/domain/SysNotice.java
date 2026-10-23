@@ -1,6 +1,8 @@
 package com.tbgbook.system.domain;
 
+import java.time.LocalDateTime;
 import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.Size;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -25,6 +27,17 @@ public class SysNotice extends BaseEntity
 
     /** 公告类型（1通知 2公告） */
     private String noticeType;
+
+    /** 定向角色ID（逗号分隔，空=全部角色） */
+    private String targetRoleIds;
+
+    /** 生效开始时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime effectiveStart;
+
+    /** 生效结束时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime effectiveEnd;
 
     /** 公告内容 */
     private String noticeContent;
@@ -62,6 +75,36 @@ public class SysNotice extends BaseEntity
     public void setNoticeType(String noticeType)
     {
         this.noticeType = noticeType;
+    }
+
+    public String getTargetRoleIds()
+    {
+        return targetRoleIds;
+    }
+
+    public void setTargetRoleIds(String targetRoleIds)
+    {
+        this.targetRoleIds = targetRoleIds;
+    }
+
+    public LocalDateTime getEffectiveStart()
+    {
+        return effectiveStart;
+    }
+
+    public void setEffectiveStart(LocalDateTime effectiveStart)
+    {
+        this.effectiveStart = effectiveStart;
+    }
+
+    public LocalDateTime getEffectiveEnd()
+    {
+        return effectiveEnd;
+    }
+
+    public void setEffectiveEnd(LocalDateTime effectiveEnd)
+    {
+        this.effectiveEnd = effectiveEnd;
     }
 
     public String getNoticeType()

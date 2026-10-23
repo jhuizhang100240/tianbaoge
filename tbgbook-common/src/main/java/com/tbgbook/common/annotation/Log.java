@@ -48,4 +48,16 @@ public @interface Log
      * 排除指定的请求参数
      */
     public String[] excludeParamNames() default {};
+
+    /**
+     * 是否为敏感操作（写入 sys_oper_log.is_sensitive）。
+     *
+     * <p>报损、退款、调价、权限变更、积分调整等关键操作置 true，日志保留 ≥180 天。
+     */
+    public boolean isSensitive() default false;
+
+    /**
+     * 业务类型（写入 sys_oper_log.biz_type），如 loss / refund / price / permission / point / coupon。
+     */
+    public String bizType() default "";
 }

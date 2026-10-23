@@ -112,7 +112,7 @@ public class MemberBalanceController extends BaseController
      * 储值退款（后台出账核销：先核销赠送金、再退本金；实际出款线下完成）。
      */
     @PreAuthorize("@ss.hasPermi('member:balance:refund')")
-    @Log(title = "会员储值退款", businessType = BusinessType.UPDATE)
+    @Log(title = "会员储值退款", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "refund")
     @PostMapping("/refund")
     public AjaxResult refund(@RequestBody RefundRequest request)
     {

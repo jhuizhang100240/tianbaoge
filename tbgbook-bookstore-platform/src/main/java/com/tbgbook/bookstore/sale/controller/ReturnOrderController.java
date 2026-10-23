@@ -102,7 +102,7 @@ public class ReturnOrderController extends BaseController
      * 审批通过无单退货：回退库存、返还**可恢复**的积分与券（已过期券不返还、已清零积分不返还）。
      */
     @PreAuthorize("@ss.hasPermi('sales:refund:approve')")
-    @Log(title = "退货审批", businessType = BusinessType.UPDATE)
+    @Log(title = "退货审批", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "refund")
     @PostMapping("/{returnId}/approve")
     public AjaxResult approve(@PathVariable("returnId") Long returnId,
             @RequestBody(required = false) ReturnAuditRequest request)

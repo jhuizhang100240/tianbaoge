@@ -32,6 +32,12 @@ public class SysUser extends BaseEntity
     @Excel(name = "部门编号", type = Type.IMPORT)
     private Long deptId;
 
+    /** 所属门店ID（单店部署恒为 1） */
+    private Long storeId;
+
+    /** 门店层级（LOCAL本店 REGION区域 HQ总部） */
+    private String storeScope;
+
     /** 用户账号 */
     @Excel(name = "登录名称")
     private String userName;
@@ -129,6 +135,26 @@ public class SysUser extends BaseEntity
     public void setDeptId(Long deptId)
     {
         this.deptId = deptId;
+    }
+
+    public Long getStoreId()
+    {
+        return storeId;
+    }
+
+    public void setStoreId(Long storeId)
+    {
+        this.storeId = storeId;
+    }
+
+    public String getStoreScope()
+    {
+        return storeScope;
+    }
+
+    public void setStoreScope(String storeScope)
+    {
+        this.storeScope = storeScope;
     }
 
     @Xss(message = "用户昵称不能包含脚本字符")

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  流水归档 Mapper XML
+  流程固定为：先 INSERT .. SELECT 复制 → 校验影响行数 → 再按同样条件删除。
+  删除只针对归档表中已存在的同主键行，避免复制失败却删源数据。
+  一律 #{}，禁止 ${} 拼接（NFR-S6）。
+-->
+<mapper namespace="com.tbgbook.bookstore.job.mapper.FlowArchiveMapper">
+
+    <insert id="copyStockFlows">
+        insert into biz_stock_flow_archive
+            (flow_id, store_id, book_id, location_id, stock_type, biz_type, biz_no,
+             qty_change, qty_before, qty_after, create_by, create_time, remark, archived_at)
+        select f.flow_id, f.store_id, f.book_id, f.location_id, f.stock_type, f.biz_type, f.biz_no,
+               f.qty_change, f.qty_before, f.qty_after, f.create_by, f.create_time, f.remark,
+               #{archivedAt}
+          from biz_stock_flow f
+         where f.create_time &lt; #{cutoff}
+           and not exists (select 1 from biz_stock_flow_archive a where a.flow_id = f.flow_id)
+         order by f.flow_id
+         limit #{limit}
+    </insert>
+
+    <delete id="deleteArchivedStockFlows">
+        delete from biz_stock_flow
+         where create_time &lt; #{cutoff}
+           and flow_id in (select flow_id from biz_stock_flow_archive)
+         order by flow_id
+         limit #{limit}
+    </delete>
+
+    <insert id="copyPointLogs">
+        insert into biz_point_log_archive
+            (log_id, member_id, change_type, points_change, points_after, batch_id,
+             ref_no, create_by, create_time, remark, archived_at)
+        select p.log_id, p.member_id, p.change_type, p.points_change, p.points_after, p.batch_id,
+               p.ref_no, p.create_by, p.create_time, p.remark, #{archivedAt}
+          from biz_point_log p
+         where p.create_time &lt; #{cutoff}
+           and not exists (select 1 from biz_point_log_archive a where a.log_id = p.log_id)
+         order by p.log_id
+         limit #{limit}
+    </insert>
+
+    <delete id="deleteArchivedPointLogs">
+        delete from biz_point_log
+         where create_time &lt; #{cutoff}
+           and log_id in (select log_id from biz_point_log_archive)
+         order by log_id
+         limit #{limit}
+    </delete>
+
+    <insert id="copyAiCallLogs">
+        insert into biz_ai_call_log_archive
+            (log_id, store_id, session_id, member_id, scene, model_name, prompt_tokens,
+             completion_tokens, total_tokens, cache_hit, cost, latency_ms, is_success,
+             error_msg, create_time, archived_at)
+        select l.log_id, l.store_id, l.session_id, l.member_id, l.scene, l.model_name,
+               l.prompt_tokens, l.completion_tokens, l.total_tokens, l.cache_hit, l.cost,
+               l.latency_ms, l.is_success, l.error_msg, l.create_time, #{archivedAt}
+          from biz_ai_call_log l
+         where l.create_time &lt; #{cutoff}
+           and not exists (select 1 from biz_ai_call_log_archive a where a.log_id = l.log_id)
+         order by l.log_id
+         limit #{limit}
+    </insert>
+
+    <delete id="deleteArchivedAiCallLogs">
+        delete from biz_ai_call_log
+         where create_time &lt; #{cutoff}
+           and log_id in (select log_id from biz_ai_call_log_archive)
+         order by log_id
+         limit #{limit}
+    </delete>
+</mapper>

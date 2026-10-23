@@ -34,6 +34,7 @@ import com.tbgbook.bookstore.borrow.domain.OverdueNotifyResult;
 import com.tbgbook.bookstore.borrow.mapper.BorrowRecordMapper;
 import com.tbgbook.bookstore.borrow.service.IBorrowRecordService;
 import com.tbgbook.bookstore.job.domain.JobRunResult;
+import com.tbgbook.bookstore.job.mapper.FlowArchiveMapper;
 import com.tbgbook.bookstore.member.domain.MemberMessage;
 import com.tbgbook.bookstore.member.domain.MemberTag;
 import com.tbgbook.bookstore.member.domain.PointBatch;
@@ -102,7 +103,11 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
 
     private final ISysNoticeService noticeService;
 
+    private final FlowArchiveMapper flowArchiveMapper;
+
     private static final long STORE_ID = 1L;
+
+    private static final int MAX_ARCHIVE_ROUNDS = 200;
 
     private static final int CHANGE_EXPIRE = 3;
 
@@ -135,6 +140,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             case "memberTagTask.recalc" -> recalcRuleTags();
             case "borrowDueTask.dueNotify" -> notifyBorrowDue();
             case "kbIndexTimeoutTask.check" -> checkKbIndexTimeout();
+            case "flowArchiveTask.archive" -> archiveFlows();
             default -> JobRunResult.failed(jobCode, "not implemented", LocalDateTime.now());
         };
     }
@@ -585,6 +591,87 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         }
         return JobRunResult.ok("kbIndexTimeoutTask.check", created,
                 "stuck=" + stuck.size() + ", created=" + created + ", failed=" + failed,
+                startedAt);
+    }
+
+    /**
+     * 流水归档：库存流水 / 积分流水 / AI 调用明细。
+     *
+     * <p>每张表循环「复制一批 → 校验复制行数 == 删除行数 → 删源表」；任何一步不相等立即停止该表，
+     * 已归档的数据保留、未归档的源数据不动。保留天数与批量大小读 {@code sys_config}，
+     * 不在此硬编码。整个任务串行执行且 `sys_job.concurrent=1`，不与自身并发。
+     */
+    public JobRunResult archiveFlows()
+    {
+        LocalDateTime startedAt = LocalDateTime.now();
+        int retainDays = Math.max(1, configInt("biz.flow.archive.retain.days", 180));
+        int batchSize = Math.min(5000, Math.max(1, configInt("biz.flow.archive.batch.size", 500)));
+        LocalDateTime cutoff = startedAt.minusDays(retainDays);
+
+        int stockArchived = 0;
+        int pointArchived = 0;
+        int aiArchived = 0;
+        StringBuilder message = new StringBuilder("cutoff=").append(cutoff);
+        try
+        {
+            for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
+            {
+                int copied = flowArchiveMapper.copyStockFlows(cutoff, batchSize, startedAt);
+                if (copied == 0)
+                {
+                    break;
+                }
+                int deleted = flowArchiveMapper.deleteArchivedStockFlows(cutoff, batchSize);
+                if (copied != deleted)
+                {
+                    message.append("; stockMismatch=").append(copied).append("/").append(deleted);
+                    break;
+                }
+                stockArchived += copied;
+            }
+            for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
+            {
+                int copied = flowArchiveMapper.copyPointLogs(cutoff, batchSize, startedAt);
+                if (copied == 0)
+                {
+                    break;
+                }
+                int deleted = flowArchiveMapper.deleteArchivedPointLogs(cutoff, batchSize);
+                if (copied != deleted)
+                {
+                    message.append("; pointMismatch=").append(copied).append("/").append(deleted);
+                    break;
+                }
+                pointArchived += copied;
+            }
+            for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
+            {
+                int copied = flowArchiveMapper.copyAiCallLogs(cutoff, batchSize, startedAt);
+                if (copied == 0)
+                {
+                    break;
+                }
+                int deleted = flowArchiveMapper.deleteArchivedAiCallLogs(cutoff, batchSize);
+                if (copied != deleted)
+                {
+                    message.append("; aiMismatch=").append(copied).append("/").append(deleted);
+                    break;
+                }
+                aiArchived += copied;
+            }
+        }
+        catch (RuntimeException e)
+        {
+            return JobRunResult.failed("flowArchiveTask.archive",
+                    "归档失败：" + e.getMessage() + "（已归档 stock=" + stockArchived
+                            + ", point=" + pointArchived + ", ai=" + aiArchived + "）",
+                    startedAt);
+        }
+        return JobRunResult.ok("flowArchiveTask.archive",
+                stockArchived + pointArchived + aiArchived,
+                message + "; stock=" + stockArchived + ", point=" + pointArchived
+                        + ", ai=" + aiArchived + ", retainDays=" + retainDays
+                        + ", batch=" + batchSize,
                 startedAt);
     }
 

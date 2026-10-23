@@ -29,6 +29,12 @@
             <artifactId>tbgbook-common</artifactId>
         </dependency>
 
+        <!-- 业务定时任务（quartz 只做触发器，业务实现留在 platform） -->
+        <dependency>
+            <groupId>com.tbgbook</groupId>
+            <artifactId>tbgbook-bookstore-platform</artifactId>
+        </dependency>
+
     </dependencies>
 
 </project>

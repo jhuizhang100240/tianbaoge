@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,7 +25,14 @@ import com.tbgbook.bookstore.analysis.domain.ReportSubscribe;
 import com.tbgbook.bookstore.analysis.mapper.ReportPushLogMapper;
 import com.tbgbook.bookstore.analysis.mapper.ReportSubscribeMapper;
 import com.tbgbook.bookstore.analysis.service.IMetricDailyService;
+import com.tbgbook.bookstore.ai.domain.KbDoc;
+import com.tbgbook.bookstore.ai.index.IndexScanTask;
 import com.tbgbook.bookstore.analysis.service.ITodoService;
+import com.tbgbook.bookstore.borrow.domain.BorrowRecord;
+import com.tbgbook.bookstore.borrow.domain.OverdueNotifyRequest;
+import com.tbgbook.bookstore.borrow.domain.OverdueNotifyResult;
+import com.tbgbook.bookstore.borrow.mapper.BorrowRecordMapper;
+import com.tbgbook.bookstore.borrow.service.IBorrowRecordService;
 import com.tbgbook.bookstore.job.domain.JobRunResult;
 import com.tbgbook.bookstore.member.domain.MemberMessage;
 import com.tbgbook.bookstore.member.domain.MemberTag;
@@ -36,7 +44,9 @@ import com.tbgbook.bookstore.member.mapper.MemberTagMapper;
 import com.tbgbook.bookstore.member.mapper.PointBatchMapper;
 import com.tbgbook.bookstore.member.mapper.PointLogMapper;
 import com.tbgbook.bookstore.member.service.IMemberTagService;
+import com.tbgbook.system.domain.SysNotice;
 import com.tbgbook.system.service.ISysConfigService;
+import com.tbgbook.system.service.ISysNoticeService;
 import com.tbgbook.bookstore.job.service.IScheduledJobService;
 import com.tbgbook.bookstore.stock.domain.StockSnapshot;
 import com.tbgbook.bookstore.stock.domain.StockSnapshotItem;
@@ -84,9 +94,21 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
 
     private final TransactionTemplate transactionTemplate;
 
+    private final BorrowRecordMapper borrowRecordMapper;
+
+    private final IBorrowRecordService borrowRecordService;
+
+    private final IndexScanTask indexScanTask;
+
+    private final ISysNoticeService noticeService;
+
     private static final long STORE_ID = 1L;
 
     private static final int CHANGE_EXPIRE = 3;
+
+    private static final int MSG_BORROW_DUE = 2;
+
+    private static final int MSG_BORROW_OVERDUE = 3;
 
     private static final int MSG_POINTS_EXPIRE = 4;
 
@@ -111,6 +133,8 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             case "reportSubscribeTask.push" -> pushReportSubscriptions();
             case "pointsExpireTask.expireNotify" -> expirePoints();
             case "memberTagTask.recalc" -> recalcRuleTags();
+            case "borrowDueTask.dueNotify" -> notifyBorrowDue();
+            case "kbIndexTimeoutTask.check" -> checkKbIndexTimeout();
             default -> JobRunResult.failed(jobCode, "not implemented", LocalDateTime.now());
         };
     }
@@ -415,6 +439,153 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         log.setRemark("积分到期清零：" + points + " 分");
         pointLogMapper.insert(log);
         return true;
+    }
+
+    /**
+     * 借阅到期提醒 + 逾期催还。
+     *
+     * <p>到期提醒窗口：应还时间在「现在 ~ 现在 + biz.borrow.due.notify.days 天」，
+     * 到期当日无论具体时刻都提醒一次；逾期催还按 biz.borrow.overdue.notify.days 间隔，
+     * 依据已有消息时间判断是否到下一次。同一借阅单同一到期日只产生一条到期提醒。
+     */
+    public JobRunResult notifyBorrowDue()
+    {
+        LocalDateTime startedAt = LocalDateTime.now();
+        LocalDate today = startedAt.toLocalDate();
+        int dueDays = Math.max(0, configInt("biz.borrow.due.notify.days", 3));
+        int overdueDays = Math.max(1, configInt("biz.borrow.overdue.notify.days", 3));
+        LocalDateTime dueCutoff = startedAt.plusDays(dueDays);
+
+        List<BorrowRecord> active = borrowRecordMapper.selectList(
+                new LambdaQueryWrapper<BorrowRecord>()
+                        .in(BorrowRecord::getStatus, BorrowRecord.STATUS_BORROWING,
+                                BorrowRecord.STATUS_OVERDUE)
+                        .isNull(BorrowRecord::getReturnTime)
+                        .isNotNull(BorrowRecord::getDueTime)
+                        .le(BorrowRecord::getDueTime, dueCutoff)
+                        .orderByAsc(BorrowRecord::getDueTime)
+                        .orderByAsc(BorrowRecord::getBorrowId));
+
+        int dueNotified = 0;
+        int skipped = 0;
+        List<Long> overdueIds = new ArrayList<>();
+        for (BorrowRecord record : active)
+        {
+            LocalDateTime due = record.getDueTime();
+            boolean dueToday = due.toLocalDate().equals(today);
+            if (due.isAfter(startedAt) || dueToday)
+            {
+                String key = record.getBorrowNo() + "#" + due.toLocalDate()
+                        .format(DateTimeFormatter.BASIC_ISO_DATE);
+                if (key.length() > 32)
+                {
+                    key = key.substring(0, 32);
+                }
+                Long existing = memberMessageMapper.selectCount(
+                        new LambdaQueryWrapper<MemberMessage>()
+                                .eq(MemberMessage::getMemberId, record.getMemberId())
+                                .eq(MemberMessage::getMsgType, MSG_BORROW_DUE)
+                                .eq(MemberMessage::getBizNo, key));
+                if (existing > 0)
+                {
+                    skipped++;
+                    continue;
+                }
+                MemberMessage message = new MemberMessage();
+                message.setStoreId(STORE_ID);
+                message.setMemberId(record.getMemberId());
+                message.setMsgType(MSG_BORROW_DUE);
+                message.setTitle("图书即将到期");
+                message.setContent("《" + record.getTitle() + "》应还日期为 "
+                        + due.toLocalDate() + "，请按时归还以免产生逾期罚金。");
+                message.setLinkUrl("pages/borrow/detail?borrowId=" + record.getBorrowId());
+                message.setBizNo(key);
+                message.setSendChannel(CHANNEL_INBOX);
+                message.setSendStatus(2);
+                message.setFailReason("");
+                message.setSendTime(startedAt);
+                message.setIsRead(0);
+                message.setReadTime(null);
+                message.setCreateTime(startedAt);
+                memberMessageMapper.insert(message);
+                dueNotified++;
+                continue;
+            }
+            LocalDateTime threshold = startedAt.minusDays(overdueDays);
+            Long recent = memberMessageMapper.selectCount(
+                    new LambdaQueryWrapper<MemberMessage>()
+                            .eq(MemberMessage::getMemberId, record.getMemberId())
+                            .eq(MemberMessage::getMsgType, MSG_BORROW_OVERDUE)
+                            .eq(MemberMessage::getBizNo, record.getBorrowNo())
+                            .ge(MemberMessage::getCreateTime, threshold));
+            if (recent > 0)
+            {
+                skipped++;
+                continue;
+            }
+            overdueIds.add(record.getBorrowId());
+        }
+
+        int overdueSent = 0;
+        int overdueFailed = 0;
+        if (!overdueIds.isEmpty())
+        {
+            OverdueNotifyRequest request = new OverdueNotifyRequest();
+            request.setBorrowIds(overdueIds);
+            OverdueNotifyResult result = borrowRecordService.notifyOverdue(request);
+            overdueSent = result.getSent() == null ? 0 : result.getSent();
+            overdueFailed = result.getFailed() == null ? 0 : result.getFailed();
+        }
+        return JobRunResult.ok("borrowDueTask.dueNotify", dueNotified + overdueSent,
+                "dueReminders=" + dueNotified + ", overdueReminders=" + overdueSent
+                        + ", skipped=" + skipped + ", failed=" + overdueFailed,
+                startedAt);
+    }
+
+    /**
+     * 知识库索引超时检测：{@code index_status=2} 且 {@code update_time} 超过
+     * {@code biz.kb.index.timeout.minutes} 的文档，为每篇文档生成一条定向系统通知。
+     * 用固定标题去重，重复触发不重复告警。
+     */
+    public JobRunResult checkKbIndexTimeout()
+    {
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<KbDoc> stuck = indexScanTask.findTimeoutDocs();
+        int timeoutMinutes = configInt("biz.kb.index.timeout.minutes", 5);
+        int created = 0;
+        int failed = 0;
+        for (KbDoc doc : stuck)
+        {
+            String title = "知识库索引超时 #" + doc.getDocId();
+            try
+            {
+                SysNotice query = new SysNotice();
+                query.setNoticeTitle(title);
+                boolean exists = noticeService.selectNoticeList(query).stream()
+                        .anyMatch(n -> title.equals(n.getNoticeTitle()));
+                if (exists)
+                {
+                    continue;
+                }
+                SysNotice notice = new SysNotice();
+                notice.setNoticeTitle(title);
+                notice.setNoticeType("1");
+                notice.setNoticeContent("文档「" + doc.getDocName() + "」索引处理超过 "
+                        + timeoutMinutes + " 分钟仍未完成，请检查 AI 服务与索引任务。");
+                notice.setStatus("0");
+                notice.setCreateBy("system");
+                notice.setRemark("AUTO:KB_TIMEOUT:" + doc.getDocId());
+                noticeService.insertNotice(notice);
+                created++;
+            }
+            catch (RuntimeException e)
+            {
+                failed++;
+            }
+        }
+        return JobRunResult.ok("kbIndexTimeoutTask.check", created,
+                "stuck=" + stuck.size() + ", created=" + created + ", failed=" + failed,
+                startedAt);
     }
 
     /**

@@ -64,4 +64,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         group by i.book_id
         order by i.book_id
     </select>
+    <select id="selectSnapshotSourceRows" resultType="java.util.LinkedHashMap">
+        select b.book_id as bookId, b.isbn as isbn, s.location_id as locationId,
+               s.qty_available as qtyAvailable, s.qty_locked as qtyLocked,
+               s.qty_borrowed as qtyBorrowed, s.qty_damaged as qtyDamaged,
+               b.cost_price as costPrice
+        from biz_stock s
+        join biz_book b on b.book_id = s.book_id and b.del_flag = '0'
+        where s.store_id = 1
+        order by b.book_id, s.location_id
+    </select>
 </mapper>

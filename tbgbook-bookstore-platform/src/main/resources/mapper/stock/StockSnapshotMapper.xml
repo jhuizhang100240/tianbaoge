@@ -61,4 +61,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where s.snapshot_date = #{snapshotDate}
         limit 1
     </select>
+    <insert id="upsertSnapshot" parameterType="StockSnapshot" useGeneratedKeys="true" keyProperty="snapshotId">
+        insert into biz_stock_snapshot
+            (store_id, snapshot_date, book_kind, total_qty, qty_available, qty_locked,
+             qty_borrowed, qty_damaged, total_amount, create_time)
+        values
+            (#{storeId}, #{snapshotDate}, #{bookKind}, #{totalQty}, #{qtyAvailable}, #{qtyLocked},
+             #{qtyBorrowed}, #{qtyDamaged}, #{totalAmount}, #{createTime})
+        on duplicate key update
+            book_kind = values(book_kind),
+            total_qty = values(total_qty),
+            qty_available = values(qty_available),
+            qty_locked = values(qty_locked),
+            qty_borrowed = values(qty_borrowed),
+            qty_damaged = values(qty_damaged),
+            total_amount = values(total_amount),
+            create_time = values(create_time)
+    </insert>
+
+    <delete id="deleteItemsBySnapshotId">
+        delete from biz_stock_snapshot_item where snapshot_id = #{snapshotId}
+    </delete>
 </mapper>

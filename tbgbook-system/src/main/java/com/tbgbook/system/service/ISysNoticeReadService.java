@@ -36,6 +36,9 @@ public interface ISysNoticeReadService
      */
     public List<SysNotice> selectNoticeListWithReadStatus(Long userId, int limit);
 
+    /** 当前用户可见的公告详情；不可见返回 null */
+    public SysNotice selectVisibleNoticeById(Long noticeId, Long userId);
+
     /**
      * 批量标记已读
      *

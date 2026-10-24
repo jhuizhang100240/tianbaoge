@@ -204,7 +204,7 @@ public class BookController extends BaseController
      * <p>价格变化与关键字段变化会在同事务内写入价格历史与变更日志。
      */
     @PreAuthorize("@ss.hasPermi('book:book:edit')")
-    @Log(title = "图书", businessType = BusinessType.UPDATE)
+    @Log(title = "图书", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "price")
     @PutMapping
     public AjaxResult edit(@Valid @RequestBody Book book)
     {

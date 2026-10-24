@@ -42,6 +42,15 @@ public interface StockSnapshotMapper extends BaseMapper<StockSnapshot>
     int upsertSnapshot(StockSnapshot snapshot);
 
     /**
+     * 按 store_id + snapshot_date 取主键。
+     *
+     * <p>`INSERT ... ON DUPLICATE KEY UPDATE` 在「更新后无列变化」时不会回填
+     * generated key，不能拿返回值当主键；写库后必须显式再查一次。
+     */
+    Long selectIdByStoreAndDate(@Param("storeId") Long storeId,
+            @Param("snapshotDate") LocalDate snapshotDate);
+
+    /**
      * 删除某快照的全部明细（任务重算时整体替换）。
      *
      * @param snapshotId 快照ID

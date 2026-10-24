@@ -57,6 +57,14 @@ public interface SysNoticeReadMapper
     public List<SysNotice> selectNoticeListWithReadStatus(@Param("userId") Long userId, @Param("limit") int limit);
 
     /**
+     * 查询当前用户可见的公告详情。
+     *
+     * <p>可见性 = 公告正常 + 在生效窗口内 +（未定向或命中所属角色）。
+     */
+    public SysNotice selectVisibleNoticeById(@Param("noticeId") Long noticeId,
+            @Param("userId") Long userId);
+
+    /**
      * 查询已阅读某公告的用户列表
      *
      * @param noticeId 公告ID

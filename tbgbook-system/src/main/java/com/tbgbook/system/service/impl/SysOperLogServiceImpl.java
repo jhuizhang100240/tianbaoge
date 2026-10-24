@@ -4,6 +4,7 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.tbgbook.system.domain.SysOperLog;
+import com.tbgbook.common.exception.ServiceException;
 import com.tbgbook.system.mapper.SysOperLogMapper;
 import com.tbgbook.system.service.ISysOperLogService;
 
@@ -50,6 +51,14 @@ public class SysOperLogServiceImpl implements ISysOperLogService
     @Override
     public int deleteOperLogByIds(Long[] operIds)
     {
+        if (operIds == null || operIds.length == 0)
+        {
+            return 0;
+        }
+        if (operLogMapper.countSensitiveByIds(operIds) > 0)
+        {
+            throw new ServiceException("敏感操作日志不可删除（保留 ≥180 天）");
+        }
         return operLogMapper.deleteOperLogByIds(operIds);
     }
 
@@ -71,6 +80,7 @@ public class SysOperLogServiceImpl implements ISysOperLogService
     @Override
     public void cleanOperLog()
     {
+        // 只清理非敏感日志；敏感日志保留 ≥180 天且不可清空（NFR-S10）
         operLogMapper.cleanOperLog();
     }
 }

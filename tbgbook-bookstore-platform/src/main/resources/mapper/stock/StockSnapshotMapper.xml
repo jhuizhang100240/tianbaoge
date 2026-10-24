@@ -79,6 +79,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             create_time = values(create_time)
     </insert>
 
+    <select id="selectIdByStoreAndDate" resultType="java.lang.Long">
+        select snapshot_id from biz_stock_snapshot
+         where store_id = #{storeId} and snapshot_date = #{snapshotDate}
+         limit 1
+    </select>
+
     <delete id="deleteItemsBySnapshotId">
         delete from biz_stock_snapshot_item where snapshot_id = #{snapshotId}
     </delete>

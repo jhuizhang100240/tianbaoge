@@ -61,6 +61,35 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         limit #{limit}
     </select>
 
+    <!-- 当前用户可见的公告详情（与 listTop 同一套定向/生效条件） -->
+    <select id="selectVisibleNoticeById" resultType="SysNotice">
+        select
+            n.notice_id as noticeId,
+            n.notice_title as noticeTitle,
+            n.notice_type as noticeType,
+            n.target_role_ids as targetRoleIds,
+            n.effective_start as effectiveStart,
+            n.effective_end as effectiveEnd,
+            cast(n.notice_content as char) as noticeContent,
+            n.status,
+            n.create_by as createBy,
+            n.create_time as createTime,
+            n.update_by as updateBy,
+            n.update_time as updateTime,
+            n.remark
+        from sys_notice n
+        where n.notice_id = #{noticeId}
+          and n.status = '0'
+          and (n.effective_start is null or n.effective_start &lt;= now())
+          and (n.effective_end is null or n.effective_end &gt;= now())
+          and (coalesce(trim(n.target_role_ids), '') = '' or exists (
+              select 1 from sys_user_role ur
+               where ur.user_id = #{userId}
+                 and find_in_set(cast(ur.role_id as char), n.target_role_ids)
+          ))
+        limit 1
+    </select>
+
     <!-- 批量标记已读 -->
     <insert id="insertNoticeReadBatch">
         insert ignore into sys_notice_read (notice_id, user_id, read_time)

@@ -16,10 +16,9 @@ import java.util.Set;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.tbgbook.bookstore.analysis.domain.BizTodo;
 import com.tbgbook.bookstore.analysis.domain.ReportPushLog;
 import com.tbgbook.bookstore.analysis.domain.ReportSubscribe;
 import com.tbgbook.bookstore.analysis.mapper.ReportPushLogMapper;
@@ -27,7 +26,6 @@ import com.tbgbook.bookstore.analysis.mapper.ReportSubscribeMapper;
 import com.tbgbook.bookstore.analysis.service.IMetricDailyService;
 import com.tbgbook.bookstore.ai.domain.KbDoc;
 import com.tbgbook.bookstore.ai.index.IndexScanTask;
-import com.tbgbook.bookstore.analysis.service.ITodoService;
 import com.tbgbook.bookstore.borrow.domain.BorrowRecord;
 import com.tbgbook.bookstore.borrow.domain.OverdueNotifyRequest;
 import com.tbgbook.bookstore.borrow.domain.OverdueNotifyResult;
@@ -77,8 +75,6 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
 
     private final ReportPushLogMapper reportPushLogMapper;
 
-    private final ITodoService todoService;
-
     private final PointBatchMapper pointBatchMapper;
 
     private final PointLogMapper pointLogMapper;
@@ -117,7 +113,6 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
 
     private static final int MSG_POINTS_EXPIRE = 4;
 
-    private static final int SEND_PENDING = 1;
 
     private static final int CHANNEL_INBOX = 2;
 
@@ -132,7 +127,8 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         }
         return switch (jobCode)
         {
-            case "stockSnapshotTask.generate" -> generateStockSnapshot(LocalDate.now());
+            case "stockSnapshotTask.generate" ->
+                transactionTemplate.execute(status -> generateStockSnapshot(LocalDate.now()));
             case "stockWarningTask.scan" -> scanStockWarnings();
             case "dashboardPrecomputeTask.run" -> precomputeDashboard();
             case "reportSubscribeTask.push" -> pushReportSubscriptions();
@@ -145,7 +141,12 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         };
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    /**
+     * 生成库存快照。
+     *
+     * <p><b>不要在本方法上加 {@code @Transactional}</b>：它由本类 run() 直接调用，
+     * 自调用不会经过 Spring 代理。事务由 run() 里的 TransactionTemplate 显式开启。
+     */
     public JobRunResult generateStockSnapshot(LocalDate date)
     {
         LocalDateTime startedAt = LocalDateTime.now();
@@ -170,7 +171,13 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         snapshot.setTotalAmount(BigDecimal.ZERO.setScale(2));
         snapshot.setCreateTime(startedAt);
         stockSnapshotMapper.upsertSnapshot(snapshot);
-        stockSnapshotMapper.deleteItemsBySnapshotId(snapshot.getSnapshotId());
+        Long snapshotId = stockSnapshotMapper.selectIdByStoreAndDate(snapshot.getStoreId(), date);
+        if (snapshotId == null)
+        {
+            throw new IllegalStateException("库存快照主表写入后未能取回 snapshotId，date=" + date);
+        }
+        snapshot.setSnapshotId(snapshotId);
+        stockSnapshotMapper.deleteItemsBySnapshotId(snapshotId);
 
         for (Map<String, Object> row : rows)
         {
@@ -279,18 +286,26 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             boolean includeEmail = channel == 2 || channel == 3;
             if (includeMessage)
             {
-                BizTodo todo = new BizTodo();
-                todo.setStoreId(STORE_ID);
-                todo.setTodoType(5);
-                todo.setPriority(2);
-                todo.setSourceModule("analysis");
-                todo.setSourceNo("SUB" + subscribe.getSubscribeId());
-                todo.setTargetValue(subscribe.getSubscribeName());
-                todo.setContent("报表推送：" + subscribe.getSubscribeName());
-                todo.setLinkUrl("/analysis/subscribe");
-                todo.setStatus(1);
-                todo.setCreateTime(startedAt);
-                todoService.save(todo);
+                // 报表订阅要求「推送至指定角色」：biz_todo 没有角色字段，
+                // 用 sys_notice 的 target_role_ids 承载角色定向。
+                String noticeTitle = "报表推送：" + subscribe.getSubscribeName();
+                if (noticeTitle.length() > 50)
+                {
+                    noticeTitle = noticeTitle.substring(0, 50);
+                }
+                SysNotice notice = new SysNotice();
+                notice.setNoticeTitle(noticeTitle);
+                notice.setNoticeType("1");
+                notice.setNoticeContent("报表订阅「" + subscribe.getSubscribeName()
+                        + "」已生成，请到数据分析-报表订阅查看。");
+                notice.setTargetRoleIds(subscribe.getTargetRoles() == null
+                        ? "" : subscribe.getTargetRoles());
+                notice.setEffectiveStart(startedAt);
+                notice.setEffectiveEnd(today.plusDays(1).atStartOfDay());
+                notice.setStatus("0");
+                notice.setCreateBy("system");
+                notice.setRemark("AUTO:REPORT_SUB:" + subscribe.getSubscribeId() + ":" + today);
+                noticeService.insertNotice(notice);
             }
             ReportPushLog log = new ReportPushLog();
             log.setSubscribeId(subscribe.getSubscribeId());
@@ -326,7 +341,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                         .le(PointBatch::getExpireTime, startedAt)
                         .orderByAsc(PointBatch::getBatchId));
         int cleared = 0;
-        int failed = 0;
+        List<String> failures = new ArrayList<>();
         for (PointBatch batch : dueBatches)
         {
             try
@@ -338,7 +353,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             }
             catch (RuntimeException e)
             {
-                failed++;
+                failures.add("batch=" + batch.getBatchId() + ":" + shortError(e));
             }
         }
 
@@ -390,9 +405,9 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 message.setLinkUrl("pages/member/point/logs");
                 message.setBizNo("POINT:" + memberId + ":" + day);
                 message.setSendChannel(CHANNEL_INBOX);
-                message.setSendStatus(SEND_PENDING);
+                message.setSendStatus(2);
                 message.setFailReason("");
-                message.setSendTime(null);
+                message.setSendTime(startedAt);
                 message.setIsRead(0);
                 message.setCreateTime(startedAt);
                 memberMessageMapper.insert(message);
@@ -400,18 +415,28 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             }
             catch (RuntimeException e)
             {
-                failed++;
+                failures.add("member=" + memberId + ":" + shortError(e));
             }
         }
+        if (!failures.isEmpty())
+        {
+            return JobRunResult.failed("pointsExpireTask.expireNotify",
+                    "expiredBatches=" + cleared + ", notified=" + notified
+                            + ", failed=" + failures.size() + ", details=" + failureSummary(failures),
+                    startedAt);
+        }
         return JobRunResult.ok("pointsExpireTask.expireNotify", cleared + notified,
-                "expiredBatches=" + cleared + ", notified=" + notified + ", failed=" + failed,
+                "expiredBatches=" + cleared + ", notified=" + notified + ", failed=0",
                 startedAt);
     }
 
     /** 单批次清零：独立事务，单条失败不影响其余批次 */
     private boolean expireSingleBatch(Long batchId, LocalDateTime now)
     {
-        Boolean done = transactionTemplate.execute(status -> expireSingleBatchInTx(batchId, now));
+        // 显式 REQUIRES_NEW：即使未来在事务中调用，单批次失败也只回滚该批次
+        TransactionTemplate tx = new TransactionTemplate(transactionTemplate.getTransactionManager());
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        Boolean done = tx.execute(status -> expireSingleBatchInTx(batchId, now));
         return Boolean.TRUE.equals(done);
     }
 
@@ -423,18 +448,27 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             return false;
         }
         int points = nz(batch.getRemainPoints());
-        if (points <= 0 || pointBatchMapper.expireBatch(batchId, now) == 0)
+        if (points <= 0)
         {
             return false;
         }
-        int after = nz(memberMapper.selectPoints(batch.getMemberId()));
-        if (after < points || memberMapper.deductPoints(batch.getMemberId(), points) == 0)
+        // 先锁会员行，再锁/改批次：与消费扣减的加锁顺序一致，避免死锁；
+        // 同时保证 after 是当前已提交余额，而不是 REPEATABLE READ 旧快照。
+        int after = nz(memberMapper.selectPointsForUpdate(batch.getMemberId()));
+        if (after < points)
         {
-            // 总账与批次账不一致：本批次事务回滚，保留源数据供人工核查，
-            // 不能“清零批次但少扣总账”掩盖账实不符。
             throw new IllegalStateException("会员积分总账小于到期批次剩余积分，memberId="
                     + batch.getMemberId() + ", batchId=" + batchId
                     + ", memberPoints=" + after + ", batchPoints=" + points);
+        }
+        if (pointBatchMapper.expireBatch(batchId, now) == 0)
+        {
+            return false;
+        }
+        if (memberMapper.deductPoints(batch.getMemberId(), points) == 0)
+        {
+            throw new IllegalStateException("积分到期扣减失败，memberId=" + batch.getMemberId()
+                    + ", batchId=" + batchId + ", points=" + points);
         }
         PointLog log = new PointLog();
         log.setMemberId(batch.getMemberId());
@@ -478,46 +512,57 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         int dueNotified = 0;
         int skipped = 0;
         List<Long> overdueIds = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
         for (BorrowRecord record : active)
         {
             LocalDateTime due = record.getDueTime();
             boolean dueToday = due.toLocalDate().equals(today);
             if (due.isAfter(startedAt) || dueToday)
             {
-                String key = record.getBorrowNo() + "#" + due.toLocalDate()
-                        .format(DateTimeFormatter.BASIC_ISO_DATE);
-                if (key.length() > 32)
+                String dueDay = due.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+                String borrowPrefix = record.getBorrowNo() == null ? "" : record.getBorrowNo();
+                int maxPrefix = 32 - 1 - 8 - 1;
+                if (borrowPrefix.length() > maxPrefix)
                 {
-                    key = key.substring(0, 32);
+                    borrowPrefix = borrowPrefix.substring(0, maxPrefix);
                 }
-                Long existing = memberMessageMapper.selectCount(
-                        new LambdaQueryWrapper<MemberMessage>()
-                                .eq(MemberMessage::getMemberId, record.getMemberId())
-                                .eq(MemberMessage::getMsgType, MSG_BORROW_DUE)
-                                .eq(MemberMessage::getBizNo, key));
-                if (existing > 0)
+                // T=到期当日提醒，A=提前提醒；两者各一次，满足「到期前 N 天 + 到期当日」
+                String key = borrowPrefix + "#" + dueDay + (dueToday ? "T" : "A");
+                try
                 {
-                    skipped++;
-                    continue;
+                    Long existing = memberMessageMapper.selectCount(
+                            new LambdaQueryWrapper<MemberMessage>()
+                                    .eq(MemberMessage::getMemberId, record.getMemberId())
+                                    .eq(MemberMessage::getMsgType, MSG_BORROW_DUE)
+                                    .eq(MemberMessage::getBizNo, key));
+                    if (existing > 0)
+                    {
+                        skipped++;
+                        continue;
+                    }
+                    MemberMessage message = new MemberMessage();
+                    message.setStoreId(STORE_ID);
+                    message.setMemberId(record.getMemberId());
+                    message.setMsgType(MSG_BORROW_DUE);
+                    message.setTitle("图书即将到期");
+                    message.setContent("《" + record.getTitle() + "》应还日期为 "
+                            + due.toLocalDate() + "，请按时归还以免产生逾期罚金。");
+                    message.setLinkUrl("pages/borrow/detail?borrowId=" + record.getBorrowId());
+                    message.setBizNo(key);
+                    message.setSendChannel(CHANNEL_INBOX);
+                    message.setSendStatus(2);
+                    message.setFailReason("");
+                    message.setSendTime(startedAt);
+                    message.setIsRead(0);
+                    message.setReadTime(null);
+                    message.setCreateTime(startedAt);
+                    memberMessageMapper.insert(message);
+                    dueNotified++;
                 }
-                MemberMessage message = new MemberMessage();
-                message.setStoreId(STORE_ID);
-                message.setMemberId(record.getMemberId());
-                message.setMsgType(MSG_BORROW_DUE);
-                message.setTitle("图书即将到期");
-                message.setContent("《" + record.getTitle() + "》应还日期为 "
-                        + due.toLocalDate() + "，请按时归还以免产生逾期罚金。");
-                message.setLinkUrl("pages/borrow/detail?borrowId=" + record.getBorrowId());
-                message.setBizNo(key);
-                message.setSendChannel(CHANNEL_INBOX);
-                message.setSendStatus(2);
-                message.setFailReason("");
-                message.setSendTime(startedAt);
-                message.setIsRead(0);
-                message.setReadTime(null);
-                message.setCreateTime(startedAt);
-                memberMessageMapper.insert(message);
-                dueNotified++;
+                catch (RuntimeException e)
+                {
+                    failures.add("borrow=" + record.getBorrowId() + ":" + shortError(e));
+                }
                 continue;
             }
             LocalDateTime threshold = startedAt.minusDays(overdueDays);
@@ -544,10 +589,25 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             OverdueNotifyResult result = borrowRecordService.notifyOverdue(request);
             overdueSent = result.getSent() == null ? 0 : result.getSent();
             overdueFailed = result.getFailed() == null ? 0 : result.getFailed();
+            if (result.getFailDetails() != null)
+            {
+                for (OverdueNotifyResult.FailDetail detail : result.getFailDetails())
+                {
+                    failures.add("borrow=" + detail.getBorrowId() + ":" + detail.getReason());
+                }
+            }
+        }
+        if (!failures.isEmpty() || overdueFailed > 0)
+        {
+            return JobRunResult.failed("borrowDueTask.dueNotify",
+                    "dueReminders=" + dueNotified + ", overdueReminders=" + overdueSent
+                            + ", skipped=" + skipped + ", failed=" + failures.size()
+                            + ", details=" + failureSummary(failures),
+                    startedAt);
         }
         return JobRunResult.ok("borrowDueTask.dueNotify", dueNotified + overdueSent,
                 "dueReminders=" + dueNotified + ", overdueReminders=" + overdueSent
-                        + ", skipped=" + skipped + ", failed=" + overdueFailed,
+                        + ", skipped=" + skipped + ", failed=0",
                 startedAt);
     }
 
@@ -562,7 +622,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         List<KbDoc> stuck = indexScanTask.findTimeoutDocs();
         int timeoutMinutes = configInt("biz.kb.index.timeout.minutes", 5);
         int created = 0;
-        int failed = 0;
+        List<String> failures = new ArrayList<>();
         for (KbDoc doc : stuck)
         {
             String title = "知识库索引超时 #" + doc.getDocId();
@@ -581,6 +641,8 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 notice.setNoticeType("1");
                 notice.setNoticeContent("文档「" + doc.getDocName() + "」索引处理超过 "
                         + timeoutMinutes + " 分钟仍未完成，请检查 AI 服务与索引任务。");
+                // 只推给店长与知识库运营员，避免全员可见
+                notice.setTargetRoleIds("100,103");
                 notice.setStatus("0");
                 notice.setCreateBy("system");
                 notice.setRemark("AUTO:KB_TIMEOUT:" + doc.getDocId());
@@ -589,11 +651,19 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             }
             catch (RuntimeException e)
             {
-                failed++;
+                failures.add("doc=" + doc.getDocId() + ":" + shortError(e));
             }
         }
+        if (!failures.isEmpty())
+        {
+            return JobRunResult.failed("kbIndexTimeoutTask.check",
+                    "stuck=" + stuck.size() + ", created=" + created
+                            + ", failed=" + failures.size()
+                            + ", details=" + failureSummary(failures),
+                    startedAt);
+        }
         return JobRunResult.ok("kbIndexTimeoutTask.check", created,
-                "stuck=" + stuck.size() + ", created=" + created + ", failed=" + failed,
+                "stuck=" + stuck.size() + ", created=" + created + ", failed=0",
                 startedAt);
     }
 
@@ -617,6 +687,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         boolean stockCapped = false;
         boolean pointCapped = false;
         boolean aiCapped = false;
+        boolean archiveMismatch = false;
         StringBuilder message = new StringBuilder("cutoff=").append(cutoff);
         try
         {
@@ -628,15 +699,16 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 {
                     break;
                 }
-                if (copied > 0 && copied != deleted)
+                if (copied > 0 && deleted < copied)
                 {
                     message.append("; stockMismatch=").append(copied).append("/").append(deleted);
+                    archiveMismatch = true;
                     break;
                 }
                 stockArchived += copied;
-                if (copied == 0 && deleted > 0)
+                if (deleted > copied)
                 {
-                    message.append("; stockRecovered=").append(deleted);
+                    message.append("; stockRecovered=").append(deleted - copied);
                 }
                 stockCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
@@ -648,15 +720,16 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 {
                     break;
                 }
-                if (copied > 0 && copied != deleted)
+                if (copied > 0 && deleted < copied)
                 {
                     message.append("; pointMismatch=").append(copied).append("/").append(deleted);
+                    archiveMismatch = true;
                     break;
                 }
                 pointArchived += copied;
-                if (copied == 0 && deleted > 0)
+                if (deleted > copied)
                 {
-                    message.append("; pointRecovered=").append(deleted);
+                    message.append("; pointRecovered=").append(deleted - copied);
                 }
                 pointCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
@@ -668,15 +741,16 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 {
                     break;
                 }
-                if (copied > 0 && copied != deleted)
+                if (copied > 0 && deleted < copied)
                 {
                     message.append("; aiMismatch=").append(copied).append("/").append(deleted);
+                    archiveMismatch = true;
                     break;
                 }
                 aiArchived += copied;
-                if (copied == 0 && deleted > 0)
+                if (deleted > copied)
                 {
-                    message.append("; aiRecovered=").append(deleted);
+                    message.append("; aiRecovered=").append(deleted - copied);
                 }
                 aiCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
@@ -687,6 +761,11 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                     "归档失败：" + e.getMessage() + "（已归档 stock=" + stockArchived
                             + ", point=" + pointArchived + ", ai=" + aiArchived + "）",
                     startedAt);
+        }
+        if (archiveMismatch)
+        {
+            return JobRunResult.failed("flowArchiveTask.archive",
+                    "归档行数校验失败：" + message, startedAt);
         }
         return JobRunResult.ok("flowArchiveTask.archive",
                 stockArchived + pointArchived + aiArchived,
@@ -711,7 +790,7 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                         .eq(MemberTag::getStatus, "0"));
         int recalculated = 0;
         int members = 0;
-        int failed = 0;
+        List<String> failures = new ArrayList<>();
         for (MemberTag tag : tags)
         {
             try
@@ -722,13 +801,42 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             }
             catch (RuntimeException e)
             {
-                failed++;
+                failures.add("tag=" + tag.getTagId() + ":" + shortError(e));
             }
+        }
+        if (!failures.isEmpty())
+        {
+            return JobRunResult.failed("memberTagTask.recalc",
+                    "tags=" + tags.size() + ", recalculated=" + recalculated
+                            + ", members=" + members + ", failed=" + failures.size()
+                            + ", details=" + failureSummary(failures),
+                    startedAt);
         }
         return JobRunResult.ok("memberTagTask.recalc", recalculated,
                 "tags=" + tags.size() + ", recalculated=" + recalculated
-                        + ", members=" + members + ", failed=" + failed,
+                        + ", members=" + members + ", failed=0",
                 startedAt);
+    }
+
+    private String shortError(RuntimeException e)
+    {
+        String message = e.getMessage();
+        if (message == null || message.isBlank())
+        {
+            message = e.getClass().getSimpleName();
+        }
+        return message.length() > 160 ? message.substring(0, 160) : message;
+    }
+
+    private String failureSummary(List<String> failures)
+    {
+        if (failures.isEmpty())
+        {
+            return "";
+        }
+        int limit = Math.min(5, failures.size());
+        String summary = String.join("; ", failures.subList(0, limit));
+        return failures.size() > limit ? summary + "; ..." : summary;
     }
 
     private int configInt(String key, int fallback)

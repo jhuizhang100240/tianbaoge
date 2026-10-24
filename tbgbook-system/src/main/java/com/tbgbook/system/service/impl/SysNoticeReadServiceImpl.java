@@ -50,6 +50,12 @@ public class SysNoticeReadServiceImpl implements ISysNoticeReadService
         return noticeReadMapper.selectNoticeListWithReadStatus(userId, limit);
     }
 
+    @Override
+    public SysNotice selectVisibleNoticeById(Long noticeId, Long userId)
+    {
+        return noticeReadMapper.selectVisibleNoticeById(noticeId, userId);
+    }
+
     /**
      * 批量标记已读
      */

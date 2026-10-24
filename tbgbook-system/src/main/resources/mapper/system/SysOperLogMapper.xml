@@ -76,8 +76,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		order by oper_id desc
 	</select>
 	
+	<select id="countSensitiveByIds" parameterType="Long" resultType="int">
+		select count(*) from sys_oper_log
+		where is_sensitive = 1 and oper_id in
+		<foreach collection="array" item="operId" open="(" separator="," close=")">
+			#{operId}
+		</foreach>
+	</select>
+
 	<delete id="deleteOperLogByIds" parameterType="Long">
- 		delete from sys_oper_log where oper_id in
+ 		delete from sys_oper_log where is_sensitive = 0 and oper_id in
  		<foreach collection="array" item="operId" open="(" separator="," close=")">
  			#{operId}
         </foreach> 
@@ -89,7 +97,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 	</select>
 	
 	<update id="cleanOperLog">
-        truncate table sys_oper_log
+        delete from sys_oper_log where is_sensitive = 0
     </update>
 
 </mapper> 

@@ -82,9 +82,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <set>
             <if test="noticeTitle != null and noticeTitle != ''">notice_title = #{noticeTitle}, </if>
             <if test="noticeType != null and noticeType != ''">notice_type = #{noticeType}, </if>
-            <if test="targetRoleIds != null">target_role_ids = #{targetRoleIds}, </if>
-            <if test="effectiveStart != null">effective_start = #{effectiveStart}, </if>
-            <if test="effectiveEnd != null">effective_end = #{effectiveEnd}, </if>
+            target_role_ids = #{targetRoleIds},
+            effective_start = #{effectiveStart},
+            effective_end = #{effectiveEnd},
             <if test="noticeContent != null">notice_content = #{noticeContent}, </if>
             <if test="status != null and status != ''">status = #{status}, </if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>

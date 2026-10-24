@@ -428,16 +428,19 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
             return false;
         }
         int after = nz(memberMapper.selectPoints(batch.getMemberId()));
-        int deducted = Math.min(points, Math.max(after, 0));
-        if (deducted > 0)
+        if (after < points || memberMapper.deductPoints(batch.getMemberId(), points) == 0)
         {
-            memberMapper.deductPoints(batch.getMemberId(), deducted);
+            // 总账与批次账不一致：本批次事务回滚，保留源数据供人工核查，
+            // 不能“清零批次但少扣总账”掩盖账实不符。
+            throw new IllegalStateException("会员积分总账小于到期批次剩余积分，memberId="
+                    + batch.getMemberId() + ", batchId=" + batchId
+                    + ", memberPoints=" + after + ", batchPoints=" + points);
         }
         PointLog log = new PointLog();
         log.setMemberId(batch.getMemberId());
         log.setChangeType(CHANGE_EXPIRE);
         log.setPointsChange(-points);
-        log.setPointsAfter(Math.max(after - points, 0));
+        log.setPointsAfter(after - points);
         log.setBatchId(batchId);
         log.setRefNo(batch.getRefNo() == null ? "" : batch.getRefNo());
         log.setCreateBy("system");
@@ -611,53 +614,71 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
         int stockArchived = 0;
         int pointArchived = 0;
         int aiArchived = 0;
+        boolean stockCapped = false;
+        boolean pointCapped = false;
+        boolean aiCapped = false;
         StringBuilder message = new StringBuilder("cutoff=").append(cutoff);
         try
         {
             for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
             {
                 int copied = flowArchiveMapper.copyStockFlows(cutoff, batchSize, startedAt);
-                if (copied == 0)
+                int deleted = flowArchiveMapper.deleteArchivedStockFlows(cutoff, batchSize);
+                if (copied == 0 && deleted == 0)
                 {
                     break;
                 }
-                int deleted = flowArchiveMapper.deleteArchivedStockFlows(cutoff, batchSize);
-                if (copied != deleted)
+                if (copied > 0 && copied != deleted)
                 {
                     message.append("; stockMismatch=").append(copied).append("/").append(deleted);
                     break;
                 }
                 stockArchived += copied;
+                if (copied == 0 && deleted > 0)
+                {
+                    message.append("; stockRecovered=").append(deleted);
+                }
+                stockCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
             for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
             {
                 int copied = flowArchiveMapper.copyPointLogs(cutoff, batchSize, startedAt);
-                if (copied == 0)
+                int deleted = flowArchiveMapper.deleteArchivedPointLogs(cutoff, batchSize);
+                if (copied == 0 && deleted == 0)
                 {
                     break;
                 }
-                int deleted = flowArchiveMapper.deleteArchivedPointLogs(cutoff, batchSize);
-                if (copied != deleted)
+                if (copied > 0 && copied != deleted)
                 {
                     message.append("; pointMismatch=").append(copied).append("/").append(deleted);
                     break;
                 }
                 pointArchived += copied;
+                if (copied == 0 && deleted > 0)
+                {
+                    message.append("; pointRecovered=").append(deleted);
+                }
+                pointCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
             for (int i = 0; i < MAX_ARCHIVE_ROUNDS; i++)
             {
                 int copied = flowArchiveMapper.copyAiCallLogs(cutoff, batchSize, startedAt);
-                if (copied == 0)
+                int deleted = flowArchiveMapper.deleteArchivedAiCallLogs(cutoff, batchSize);
+                if (copied == 0 && deleted == 0)
                 {
                     break;
                 }
-                int deleted = flowArchiveMapper.deleteArchivedAiCallLogs(cutoff, batchSize);
-                if (copied != deleted)
+                if (copied > 0 && copied != deleted)
                 {
                     message.append("; aiMismatch=").append(copied).append("/").append(deleted);
                     break;
                 }
                 aiArchived += copied;
+                if (copied == 0 && deleted > 0)
+                {
+                    message.append("; aiRecovered=").append(deleted);
+                }
+                aiCapped = i == MAX_ARCHIVE_ROUNDS - 1;
             }
         }
         catch (RuntimeException e)
@@ -671,7 +692,9 @@ public class ScheduledJobServiceImpl implements IScheduledJobService
                 stockArchived + pointArchived + aiArchived,
                 message + "; stock=" + stockArchived + ", point=" + pointArchived
                         + ", ai=" + aiArchived + ", retainDays=" + retainDays
-                        + ", batch=" + batchSize,
+                        + ", batch=" + batchSize
+                        + (stockCapped || pointCapped || aiCapped
+                                ? ", capped=true（单次上限 " + MAX_ARCHIVE_ROUNDS + " 批，次日继续）" : ""),
                 startedAt);
     }
 

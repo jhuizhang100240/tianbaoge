@@ -79,15 +79,14 @@ public class MetricDailyServiceImpl extends ServiceImpl<MetricDailyMapper, Metri
         {
             return;
         }
-        Map<LocalDate, List<Map<String, Object>>> orderRows = new LinkedHashMap<>();
-        for (Map<String, Object> row : analysisQueryMapper.rangeOrderMetrics(start, end))
-        {
-            orderRows.put(toDate(row.get("metric_date")), List.of(row));
-        }
+        // 以 biz_metric_daily 是否已有完整 8 个指标为准，而不是看 biz_order 有无订单。
+        // 否则「当天没有订单」会被反复当成缺失日重算，趋势接口 P95 会被拖到数秒。
+        java.util.Set<LocalDate> complete = new java.util.HashSet<>(
+                analysisQueryMapper.metricCompleteDates(start, end));
         LocalDate cursor = start;
         while (!cursor.isAfter(end))
         {
-            if (!orderRows.containsKey(cursor))
+            if (!complete.contains(cursor))
             {
                 computeDay(cursor);
             }

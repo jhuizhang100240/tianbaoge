@@ -408,6 +408,19 @@
         order by metric_date
     </select>
 
+    <select id="metricCompleteDates" resultType="java.time.LocalDate">
+        select metric_date
+        from biz_metric_daily
+        where store_id = 1
+          and dim_type = ''
+          and dim_value = ''
+          and metric_date &gt;= #{start}
+          and metric_date &lt;= #{end}
+        group by metric_date
+        having count(distinct metric_code) &gt;= 8
+        order by metric_date
+    </select>
+
     <select id="metricRows" resultType="java.util.LinkedHashMap">
         select metric_date, metric_code, metric_value
         from biz_metric_daily

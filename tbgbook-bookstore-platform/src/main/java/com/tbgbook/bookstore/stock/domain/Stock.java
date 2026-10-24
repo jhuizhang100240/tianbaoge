@@ -1,6 +1,7 @@
 package com.tbgbook.bookstore.stock.domain;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -147,13 +148,26 @@ public class Stock implements Serializable
     private Boolean hasAvailable;
 
     /**
-     * 分类ID（**仅总览统计用**，非本表字段）。
+     * 分类ID（查询与响应展示用，非本表字段）。
      *
-     * <p>库存行上没有分类，分类挂在图书上；总览的「限定分类」筛选因此要 JOIN `biz_book` 后用
-     * {@code b.category_id} 过滤。库存列表本身的筛选参数里没有 {@code categoryId}（契约如此）。
+     * <p>库存行上没有分类，分类挂在图书上；总览与库存明细都 JOIN {@code biz_book} 后用
+     * {@code b.category_id} 过滤。
      */
     @TableField(exist = false)
     private Long categoryId;
+
+    /**
+     * 库存状态（计算字段：normal / low / zero / slow）。
+     *
+     * <p>零库存沿用以「存在库存流水」为前提，避免把刚建档、从未入库的图书误标断货；
+     * 低库存按 {@code 0 < 可售 < 安全库存} 派生；滞销来自待处理库存预警。
+     */
+    @TableField(exist = false)
+    private String stockStatus;
+
+    /** 近 30 天日均销量（来自待处理库存预警，扫描任务按日汇总）。 */
+    @TableField(exist = false)
+    private BigDecimal avgSale30d;
 
     /**
      * 请求参数（瞬态，不落库）。

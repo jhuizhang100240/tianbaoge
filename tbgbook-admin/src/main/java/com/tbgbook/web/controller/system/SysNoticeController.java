@@ -19,6 +19,7 @@ import com.tbgbook.common.core.domain.AjaxResult;
 import com.tbgbook.common.core.page.TableDataInfo;
 import com.tbgbook.common.core.text.Convert;
 import com.tbgbook.common.enums.BusinessType;
+import com.tbgbook.common.utils.SecurityUtils;
 import com.tbgbook.system.domain.SysNotice;
 import com.tbgbook.system.service.ISysNoticeReadService;
 import com.tbgbook.system.service.ISysNoticeService;
@@ -56,7 +57,18 @@ public class SysNoticeController extends BaseController
     @GetMapping(value = "/{noticeId}")
     public AjaxResult getInfo(@PathVariable Long noticeId)
     {
-        return success(noticeService.selectNoticeById(noticeId));
+        // 公告管理权限可看全部；普通员工只能看“当前用户可见”的公告，
+        // 防止通过猜 noticeId 绕过 target_role_ids / 生效时间。
+        if (SecurityUtils.hasPermi("system:notice:query"))
+        {
+            return success(noticeService.selectNoticeById(noticeId));
+        }
+        SysNotice visible = noticeReadService.selectVisibleNoticeById(noticeId, getUserId());
+        if (visible == null)
+        {
+            return AjaxResult.error(404, "公告不存在或当前用户不可见");
+        }
+        return success(visible);
     }
 
     /**

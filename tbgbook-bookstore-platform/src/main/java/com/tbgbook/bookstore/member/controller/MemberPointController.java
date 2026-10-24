@@ -39,7 +39,7 @@ public class MemberPointController extends BaseController
      * 人工调整积分（正增负减，原因必填）。
      */
     @PreAuthorize("@ss.hasPermi('member:point:adjust')")
-    @Log(title = "会员积分", businessType = BusinessType.UPDATE)
+    @Log(title = "会员积分", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "point")
     @PostMapping("/adjust")
     public AjaxResult adjust(@RequestBody PointAdjustRequest request)
     {
@@ -50,7 +50,7 @@ public class MemberPointController extends BaseController
      * 积分赠送（写入独立批次，同样受有效期约束）。
      */
     @PreAuthorize("@ss.hasPermi('member:point:grant')")
-    @Log(title = "会员积分", businessType = BusinessType.UPDATE)
+    @Log(title = "会员积分", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "point")
     @PostMapping("/grant")
     public AjaxResult grant(@RequestBody PointGrantRequest request)
     {

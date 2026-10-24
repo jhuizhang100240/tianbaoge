@@ -34,6 +34,13 @@ public interface SysOperLogMapper
     public int deleteOperLogByIds(Long[] operIds);
 
     /**
+     * 统计待删除记录中的敏感操作日志数量（is_sensitive=1）。
+     *
+     * <p>敏感日志保留 ≥180 天且不可删除（NFR-S10）。
+     */
+    public int countSensitiveByIds(Long[] operIds);
+
+    /**
      * 查询操作日志详细
      * 
      * @param operId 操作ID

@@ -36,4 +36,11 @@ public interface StockSnapshotItemMapper extends BaseMapper<StockSnapshotItem>
      * @return 每本书一行（qty = 四类之和，amount = 各行金额之和）
      */
     List<SnapshotBookAgg> selectBookAggBySnapshot(@Param("snapshotId") Long snapshotId);
+
+    /**
+     * 生成快照的源数据：按「图书 + 库位」汇总四类库存，并回填 ISBN 与成本价。
+     *
+     * @return 快照源行
+     */
+    List<java.util.Map<String, Object>> selectSnapshotSourceRows();
 }

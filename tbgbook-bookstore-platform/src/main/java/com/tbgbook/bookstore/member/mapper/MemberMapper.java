@@ -38,6 +38,14 @@ public interface MemberMapper extends BaseMapper<Member>
     /** 读取当前积分余额 */
     Integer selectPoints(@Param("memberId") Long memberId);
 
+    /**
+     * 锁定并读取当前积分余额（SELECT ... FOR UPDATE）。
+     *
+     * <p>到期清零必须先锁会员行再锁批次，与消费扣减的加锁顺序一致，
+     * 既避免死锁，也保证 points_after 记录的是最新余额。
+     */
+    Integer selectPointsForUpdate(@Param("memberId") Long memberId);
+
     /** 成长值累加（只增不减） */
     int addGrowth(@Param("memberId") Long memberId, @Param("delta") int delta);
 

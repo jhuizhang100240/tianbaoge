@@ -74,6 +74,14 @@ public class SysOperLog extends BaseEntity
     @Excel(name = "状态", readConverterExp = "0=正常,1=异常")
     private Integer status;
 
+    /** 是否敏感操作（1是；保留 ≥180 天且不可删除） */
+    @Excel(name = "敏感操作", readConverterExp = "0=否,1=是")
+    private Integer isSensitive;
+
+    /** 业务类型（loss/refund/price/permission/point/coupon） */
+    @Excel(name = "业务类型")
+    private String bizType;
+
     /** 错误消息 */
     @Excel(name = "错误消息")
     private String errorMsg;
@@ -235,6 +243,26 @@ public class SysOperLog extends BaseEntity
     public void setStatus(Integer status)
     {
         this.status = status;
+    }
+
+    public Integer getIsSensitive()
+    {
+        return isSensitive;
+    }
+
+    public void setIsSensitive(Integer isSensitive)
+    {
+        this.isSensitive = isSensitive;
+    }
+
+    public String getBizType()
+    {
+        return bizType;
+    }
+
+    public void setBizType(String bizType)
+    {
+        this.bizType = bizType;
     }
 
     public String getErrorMsg()

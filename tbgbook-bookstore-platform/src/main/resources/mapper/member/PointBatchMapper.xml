@@ -89,6 +89,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and remain_points = 0
     </update>
 
+    <!-- 到期清零：条件更新保证重复触发/并发触发只清零一次 -->
+    <update id="expireBatch">
+        update biz_point_batch
+        set remain_points = 0,
+            status = 3
+        where batch_id = #{batchId}
+          and status = 1
+          and remain_points &gt; 0
+          and expire_time &lt;= #{now}
+    </update>
+
     <!-- 即将到期明细：时间窗口由应用侧传入（A32：禁止用库 now() 做业务时间比较） -->
     <select id="selectExpiringItems" resultType="PointExpiringItem">
         select b.member_id as memberId,

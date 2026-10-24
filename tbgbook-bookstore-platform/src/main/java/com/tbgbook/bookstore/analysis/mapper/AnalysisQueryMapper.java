@@ -66,6 +66,9 @@ public interface AnalysisQueryMapper
 
     List<Map<String, Object>> metricRows(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
+    /** 已有完整 8 个指标的日期（避免按订单表判断导致空订单日反复重算）。 */
+    List<LocalDate> metricCompleteDates(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
     List<Map<String, Object>> topBooks(@Param("day") LocalDate day, @Param("limit") int limit);
 
     List<Map<String, Object>> categoryShare(@Param("day") LocalDate day);

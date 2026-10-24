@@ -32,6 +32,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="categoryName" column="category_name" />
         <result property="locationCode" column="location_code" />
         <result property="locationName" column="location_name" />
+        <result property="categoryId"   column="book_category_id" />
+        <result property="stockStatus"  column="stock_status" />
+        <result property="avgSale30d"   column="avg_sale_30d" />
     </resultMap>
 
     <sql id="selectStockVo">
@@ -39,12 +42,33 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                s.qty_available, s.qty_locked, s.qty_borrowed, s.qty_damaged,
                s.safety_qty, s.version, s.create_time, s.update_time,
                b.isbn as book_isbn, b.title as book_title,
+               b.category_id as book_category_id,
                c.category_name as category_name,
-               l.location_code as location_code, l.location_name as location_name
+               l.location_code as location_code, l.location_name as location_name,
+               w.avg_sale_30d,
+               case
+                   when s.qty_available = 0
+                        and exists (select 1 from biz_stock_flow f where f.book_id = s.book_id)
+                       then 'zero'
+                   when s.qty_available &gt; 0 and s.qty_available &lt; s.safety_qty
+                       then 'low'
+                   when ifnull(w.has_slow_moving, 0) = 1
+                        and (s.qty_available + s.qty_locked + s.qty_borrowed + s.qty_damaged) &gt; 0
+                       then 'slow'
+                   else 'normal'
+               end as stock_status
         from biz_stock s
         left join biz_book b on b.book_id = s.book_id
         left join biz_category c on c.category_id = b.category_id
         left join biz_location l on l.location_id = s.location_id
+        left join (
+            select book_id,
+                   max(avg_sale_30d) as avg_sale_30d,
+                   max(case when warning_type = 2 then 1 else 0 end) as has_slow_moving
+            from biz_stock_warning
+            where handle_status = 1
+            group by book_id
+        ) w on w.book_id = s.book_id
     </sql>
 
     <select id="selectStockList" parameterType="Stock" resultMap="StockResult">
@@ -62,8 +86,42 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="locationId != null">
                 and s.location_id = #{locationId}
             </if>
-            <if test="hasAvailable != null and hasAvailable">
-                and s.qty_available &gt; 0
+            <if test="categoryId != null">
+                and b.category_id = #{categoryId}
+            </if>
+            <if test="hasAvailable != null">
+                <choose>
+                    <when test="hasAvailable">
+                        and s.qty_available &gt; 0
+                    </when>
+                    <otherwise>
+                        and s.qty_available = 0
+                    </otherwise>
+                </choose>
+            </if>
+            <if test="stockStatus != null and stockStatus != ''">
+                <choose>
+                    <when test="stockStatus == 'low'">
+                        and s.qty_available &gt; 0 and s.qty_available &lt; s.safety_qty
+                    </when>
+                    <when test="stockStatus == 'zero'">
+                        and s.qty_available = 0
+                        and exists (select 1 from biz_stock_flow f where f.book_id = s.book_id)
+                    </when>
+                    <when test="stockStatus == 'slow'">
+                        and ifnull(w.has_slow_moving, 0) = 1
+                        and (s.qty_available + s.qty_locked + s.qty_borrowed + s.qty_damaged) &gt; 0
+                    </when>
+                    <when test="stockStatus == 'normal'">
+                        and not (s.qty_available = 0
+                                 and exists (select 1 from biz_stock_flow f where f.book_id = s.book_id))
+                        and not (s.qty_available &gt; 0 and s.qty_available &lt; s.safety_qty)
+                        and ifnull(w.has_slow_moving, 0) = 0
+                    </when>
+                    <otherwise>
+                        and 1 = 0
+                    </otherwise>
+                </choose>
             </if>
             <if test="params.beginTime != null and params.beginTime != ''">
                 and s.create_time &gt;= #{params.beginTime}

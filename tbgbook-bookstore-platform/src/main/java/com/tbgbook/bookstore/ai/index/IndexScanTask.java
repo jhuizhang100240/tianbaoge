@@ -84,6 +84,25 @@ public class IndexScanTask
         warnTimeoutDocs();
     }
 
+    /**
+     * 扫描索引超时的文档（{@code index_status=2 处理中} 且 {@code update_time} 早于阈值）。
+     *
+     * <p>{@code tbgbook-quartz} 的「知识库索引超时检测」任务复用本方法，保证控制台
+     * 与后台定时两侧口径一致。
+     *
+     * @return 超时文档（按 doc_id 升序）
+     */
+    public List<KbDoc> findTimeoutDocs()
+    {
+        int timeoutMinutes = Math.max(1, intConfig("biz.kb.index.timeout.minutes", 5));
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(timeoutMinutes);
+        return kbDocMapper.selectList(new LambdaQueryWrapper<KbDoc>()
+                .select(KbDoc::getDocId, KbDoc::getDocName, KbDoc::getUpdateTime)
+                .eq(KbDoc::getIndexStatus, 2)
+                .lt(KbDoc::getUpdateTime, threshold)
+                .orderByAsc(KbDoc::getDocId));
+    }
+
     private void warnTimeoutDocs()
     {
         int timeoutMinutes = Math.max(1, intConfig("biz.kb.index.timeout.minutes", 5));

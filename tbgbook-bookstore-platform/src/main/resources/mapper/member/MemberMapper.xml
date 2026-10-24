@@ -109,6 +109,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select points from biz_member where member_id = #{memberId}
     </select>
 
+    <select id="selectPointsForUpdate" resultType="java.lang.Integer">
+        select points from biz_member where member_id = #{memberId} for update
+    </select>
+
     <update id="addGrowth">
         update biz_member
         set growth_value = growth_value + #{delta}, update_time = now()

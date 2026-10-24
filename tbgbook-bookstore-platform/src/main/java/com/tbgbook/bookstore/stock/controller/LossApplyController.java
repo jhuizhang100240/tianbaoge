@@ -123,7 +123,7 @@ public class LossApplyController extends BaseController
      * 重复审批返回 409，不会把库存扣两遍。
      */
     @PreAuthorize("@ss.hasPermi('inventory:loss:approve')")
-    @Log(title = "报损审批", businessType = BusinessType.UPDATE)
+    @Log(title = "报损审批", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "loss")
     @PostMapping("/{applyId}/approve")
     public AjaxResult approve(@PathVariable("applyId") Long applyId,
             @Valid @RequestBody(required = false) LossAuditRequest request)
@@ -139,7 +139,7 @@ public class LossApplyController extends BaseController
      * 与 approve 共用同一个 DTO，字段注解分不清这次是哪个端点。
      */
     @PreAuthorize("@ss.hasPermi('inventory:loss:approve')")
-    @Log(title = "报损审批", businessType = BusinessType.UPDATE)
+    @Log(title = "报损审批", businessType = BusinessType.UPDATE, isSensitive = true, bizType = "loss")
     @PostMapping("/{applyId}/reject")
     public AjaxResult reject(@PathVariable("applyId") Long applyId,
             @Valid @RequestBody LossAuditRequest request)
